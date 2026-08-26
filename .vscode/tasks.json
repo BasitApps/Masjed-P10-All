@@ -1,0 +1,48 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "PlatformIO: Build",
+            "type": "shell",
+            "command": "C:\\Users\\m_nag\\.platformio\\penv\\Scripts\\platformio.exe",
+            "args": [
+                "run"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "PlatformIO: Upload",
+            "type": "shell",
+            "command": "C:\\Users\\m_nag\\.platformio\\penv\\Scripts\\platformio.exe",
+            "args": [
+                "run",
+                "--target",
+                "upload"
+            ],
+            "group": "build",
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "PlatformIO: Clean",
+            "type": "shell",
+            "command": "C:\\Users\\m_nag\\.platformio\\penv\\Scripts\\platformio.exe",
+            "args": [
+                "run",
+                "--target",
+                "clean"
+            ],
+            "group": "build",
+            "problemMatcher": [
+                "$gcc"
+            ]
+        }
+    ]
+}

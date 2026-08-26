@@ -1,0 +1,13 @@
+BasedOnStyle: LLVM
+IndentWidth: 2
+ColumnLimit: 80
+UseTab: Never
+BreakBeforeBraces: Allman
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+PointerAlignment: Right
+SortIncludes: CaseSensitive
+IncludeBlocks: Preserve
+AlignConsecutiveMacros: true
+SpaceAfterCStyleCast: false
