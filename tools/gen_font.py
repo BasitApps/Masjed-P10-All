@@ -330,20 +330,20 @@ def parse_glcd_header(path):
 def _dense_joins(kv_true_cps, size=0x064B):
     vals = [1 if cp in kv_true_cps else 0 for cp in range(size)]
     lines, line = [], ""
-    for v in vals:
-        piece = f"{v},"
+    for i, v in enumerate(vals):
+        piece = f"{v}," if i < len(vals) - 1 else f"{v}"
         if len(line) + len(piece) > 72:
-            lines.append("    " + line.rstrip(","))
+            lines.append("    " + line)
             line = ""
         line += piece
-    if line.strip(","):
-        lines.append("    " + line.rstrip(","))
+    if line:
+        lines.append("    " + line)
     return "\n".join(lines)
 
 
 def emit_map_header(path):
     seen, rows = set(), []
-    for f in FORMS:
+    for f in sorted(FORMS, key=lambda x: x.cp):
         if f.cp in seen:
             continue
         seen.add(f.cp)
@@ -354,6 +354,21 @@ def emit_map_header(path):
 
     jr = {cp for cp, v in JOIN_RIGHT.items() if v}
     jl = {cp for cp, v in JOIN_LEFT.items() if v}
+
+    # FORMS_BY_BASE[base_cp][ISO,INI,MED,FIN] -> slot (0 = absent)
+    fb = {}
+    for ltr in LETTERS:
+        row = [0, 0, 0, 0]
+        for tag, cp in ltr[3]:
+            idx = {"ISO": 0, "INI": 1, "MED": 2, "FIN": 3}[tag]
+            row[idx] = CP_TO_SLOT[cp]
+        # dedup rows for duplicate-cp letters (teh_marbuta): keep first hit
+        for i in (1, 2):
+            if row[i] == row[3] and i:
+                row[i] = row[3]
+        fb[ltr[1]] = row
+    fb_rows = ",\n".join(
+        "    {0x%04X,{%d,%d,%d,%d}}" % (cp, *row) for cp, row in sorted(fb.items()))
 
     lig_lines = []
     for (seq, iso_cp, fin_cp) in LAM_ALEFS:
@@ -369,7 +384,19 @@ def emit_map_header(path):
 #define ARABIC_GLYPH_MAP_H
 
 #include <stdint.h>
+
+#if defined(ARDUINO) || defined(ESP8266) || defined(AVR)
 #include <avr/pgmspace.h>
+#else
+// Host-build shim for native unit tests
+#define PROGMEM
+inline uint8_t pgm_read_byte(const void *p) {{
+    return *(const uint8_t *)p;
+}}
+inline uint16_t pgm_read_word(const void *p) {{
+    return *(const uint16_t *)p;
+}}
+#endif
 
 namespace ArabicMap {{
 
@@ -391,6 +418,24 @@ struct LamAlef {{ uint16_t pair[2]; uint8_t iso, fin; }};
 static const LamAlef LIGATURES[{len(LAM_ALEFS)}] PROGMEM = {{
 {ligs}
 }};
+
+// form slots by base letter: columns [ISO, INI, MED, FIN], 0 = absent
+struct FormRow {{ uint8_t f[4]; }};
+struct BaseForms {{ uint16_t base; FormRow row; }};
+static const BaseForms FORMS_BY_BASE[{len(fb)}] PROGMEM = {{
+{fb_rows}
+}};
+
+inline const FormRow *formsByBase(uint16_t cp) {{
+    int lo = 0, hi = {len(fb)} - 1;
+    while (lo <= hi) {{
+        int mid = (lo + hi) >> 1;
+        uint16_t b = pgm_read_word(&FORMS_BY_BASE[mid].base);
+        if (b == cp) return &FORMS_BY_BASE[mid].row;
+        if (b < cp) lo = mid + 1; else hi = mid - 1;
+    }}
+    return nullptr;
+}}
 
 inline uint8_t joinsRight(uint16_t cp) {{
     return cp < 0x064B ? pgm_read_byte(&JOINS_RIGHT[cp]) : 0;
