@@ -94,16 +94,17 @@ struct Configuration {
   int16_t country, government;
   int16_t password, wifiPassword;
   uint8_t brightness, scrollingSpeed, isSmallFont;
+  int8_t language;
   int16_t powerSaveAfterIsha, powerSaveBeforeFajr;
   int16_t city;
-  char masjedName[90];
-  char message[210];
+  char masjedName[100];
+  char message[240];
 
   bool isValid() const {
     return eepromVersion == EEPROM_VERSION && latitude >= -90.0f &&
            latitude <= 90.0f && longitude >= -180.0f && longitude <= 180.0f &&
            isSmallFont <= 1 && calcMethod <= 4 && wayMethod <= 1 &&
-           scrollingSpeed <= 5;
+           scrollingSpeed <= 5 && (language == 0 || language == 1);
   }
 
   void setDefaults() {
@@ -115,6 +116,7 @@ struct Configuration {
     country = government = password = wifiPassword = 0;
     brightness = scrollingSpeed = 1;
     isSmallFont = 0;
+    language = LANG_AR;
     powerSaveAfterIsha = powerSaveBeforeFajr = 30;
     city = 0;
     masjedName[0] = message[0] = '0';
@@ -165,10 +167,10 @@ inline unsigned long lastSecondMs = 0;
 inline int8_t cachedTemp = -99;
 inline char fmtBuf[32];
 
-// String caches
-inline char cachedDayName[10] = {0};
+// String caches (sized for UTF-8 Arabic names)
+inline char cachedDayName[16] = {0};
 inline int8_t cachedDayIndex = -1;
-inline char cachedMonthName[14] = {0};
+inline char cachedMonthName[26] = {0};
 inline int8_t cachedMonthIndex = -1;
 
 // Prayer indices constant

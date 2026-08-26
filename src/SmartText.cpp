@@ -2,16 +2,19 @@
  * SmartText.cpp - Flicker-Free Text Engine for DMDESP
  */
 #include "SmartText.h"
+#include "ArabicShaper.h"
 
 SmartText::SmartText(DMDESP &d, int16_t w)
     : disp(d), width(w), textW(0), scrollX(0), lastMs(0), flashMs(0), speed(50),
       flashSpeed(1000), areaY(0), areaH(16), drawY(0), isNew(true),
-      flashVisible(true) {
+      flashVisible(true), shaping(true) {
   text[0] = '\0';
+  srcCache[0] = '\0';
 }
 
 void SmartText::reset() {
   text[0] = '\0';
+  srcCache[0] = '\0';
   textW = scrollX = 0;
   isNew = true;
   flashVisible = true;
@@ -52,9 +55,15 @@ bool SmartText::updateText(const char *src, int8_t y) {
     return false;
   }
   drawY = y;
-  if (strcmp(text, src) != 0) {
-    strncpy(text, src, BUF_TEXT - 1);
-    text[BUF_TEXT - 1] = '\0';
+  if (strcmp(srcCache, src) != 0) {
+    strncpy(srcCache, src, BUF_TEXT - 1);
+    srcCache[BUF_TEXT - 1] = '\0';
+    if (shaping) {
+      ArabicShaper::shape(srcCache, text, BUF_TEXT);
+    } else {
+      strncpy(text, srcCache, BUF_TEXT - 1);
+      text[BUF_TEXT - 1] = '\0';
+    }
     textW = disp.textWidth(text);
     isNew = true;
     clearArea();

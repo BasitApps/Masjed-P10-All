@@ -9,8 +9,12 @@
 #define DEBUG 0
 
 // ============ VERSION ============
-#define EEPROM_VERSION 2
+#define EEPROM_VERSION 3
 #define MIN_VALID_YEAR 2025
+
+// ============ LANGUAGE ============
+#define LANG_AR 0
+#define LANG_EN 1
 
 // ============ DISPLAY ============
 #define DISPLAY_WIDTH 128
@@ -29,14 +33,13 @@
 #define MS_WIFI_TIMEOUT 600000UL // 10 minutes
 
 // ============ BUFFERS ============
-// BUF_SMALL: Used for time display "H : MM : SS" (~12 chars) + headroom
+// UTF-8 Arabic: shaped output <= logical input length.
+// BUF_SMALL: time display "H : MM : SS" (~12 chars) + headroom
 #define BUF_SMALL 48
-// BUF_LARGE: Used for runText - max is config.message (210) + prayer times (~150) + headroom
-// Reduced from 400 to 280 (saves 120 bytes RAM)
-#define BUF_LARGE 280
-// BUF_TEXT: Used in SmartText - max is config.message (210), but SmartText limits to 200
-// Kept at 200 to match SmartText usage
-#define BUF_TEXT 200
+// BUF_LARGE: runText - must hold config.message (240) + headroom
+#define BUF_LARGE 256
+// BUF_TEXT: SmartText internal (logical cache + shaped), matches message
+#define BUF_TEXT 256
 
 // ============ WIFI ============
 #define AP_SSID_PREFIX "Basit-Masjed-"

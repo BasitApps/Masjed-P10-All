@@ -21,6 +21,12 @@ public:
     areaY = y;
     areaH = h;
   }
+  void setShaping(bool on) {
+    if (shaping != on) {
+      shaping = on;
+      reset();
+    }
+  }
   void reset();
 
   bool isStatic() const { return textW <= width; }
@@ -37,7 +43,8 @@ private:
   uint16_t speed, flashSpeed;
   int8_t areaY, areaH, drawY;
   char text[BUF_TEXT];
-  bool isNew, flashVisible;
+  char srcCache[BUF_TEXT];
+  bool isNew, flashVisible, shaping;
 };
 
 #endif

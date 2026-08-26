@@ -10,8 +10,8 @@
 #include <PrayerTimes.h>
 #include <RTClib.h>
 #include <Wire.h>
-#include <fonts/Janat16.h>
-#include <fonts/Janat7.h>
+#include <fonts/Janat16Ext.h>
+#include <fonts/Janat7Ext.h>
 
 ESP8266WebServer server(80);
 RTC_DS3231 rtc;
@@ -33,6 +33,21 @@ inline void sleeping()
 {
   dmd.clear();
   dmd.setPixel(0, 0, Bitmap::White);
+}
+
+inline PGM_P prayerName(uint8_t i)
+{
+  return config.language == LANG_EN ? PRAYER_NAME_EN[i] : PRAYER_NAME_AR[i];
+}
+inline PGM_P dayName()
+{
+  return config.language == LANG_EN ? DAY_NAME_EN[timeData.dow]
+                                    : DAY_NAME_AR[timeData.dow];
+}
+inline PGM_P hijriMonthName(int8_t m)
+{
+  return config.language == LANG_EN ? HIJRI_MONTH_EN[m - 1]
+                                    : HIJRI_MONTH_AR[m - 1];
 }
 
 void blur(const char *text, char *out, size_t outSize)
@@ -335,8 +350,7 @@ void drawTopInfo()
   case 0:
     if (cachedDayIndex != timeData.dow)
     {
-      safeCopyP(cachedDayName, dayNameGlobal[timeData.dow],
-                sizeof(cachedDayName));
+      safeCopyP(cachedDayName, dayName(), sizeof(cachedDayName));
       cachedDayIndex = timeData.dow;
     }
     safeCopy(fmtBuf, cachedDayName, sizeof(fmtBuf));
@@ -350,7 +364,7 @@ void drawTopInfo()
     int8_t monthIdx = timeData.hMonth - 1;
     if (cachedMonthIndex != monthIdx)
     {
-      safeCopyP(cachedMonthName, arabicMonthName[monthIdx],
+      safeCopyP(cachedMonthName, hijriMonthName(timeData.hMonth),
                 sizeof(cachedMonthName));
       cachedMonthIndex = monthIdx;
     }
@@ -358,7 +372,7 @@ void drawTopInfo()
     break;
   }
   case 3:
-    safeCopy(fmtBuf, "\"XaN ;CazWA", sizeof(fmtBuf));
+    safeCopyP(fmtBuf, MSG_EQAMA, sizeof(fmtBuf));
     break;
   }
   if (strcmp(cachedText, fmtBuf) != 0)
@@ -439,7 +453,7 @@ void checkPrayers(unsigned long now, int16_t nowMins)
       uint8_t h, m;
       minToHM(pt, h, m);
       snprintf(dispState.runText, sizeof(dispState.runText), "%d:%02d  %s",
-               hour12(h), m, TimeName[i]);
+               hour12(h), m, prayerName(i));
       snprintf(dispState.tempBuf, sizeof(dispState.tempBuf), "%d : %02d : %02d",
                hour12(timeData.hour), timeData.min, timeData.sec);
       displayText(dispState.runText, dispState.tempBuf, false, true, now);
@@ -451,12 +465,12 @@ void checkPrayers(unsigned long now, int16_t nowMins)
       dispState.setStopCards(true);
       if (i == 1)
       {
-        displayText(TimeName[i], nullptr, true, true, now);
+        displayText(prayerName(i), nullptr, true, true, now);
       }
       else
       {
-        snprintf(dispState.runText, sizeof(dispState.runText), "%s ^AIA",
-                 (i == 2 && friday) ? "_rxeWA" : TimeName[i]);
+        snprintf(dispState.runText, sizeof(dispState.runText), MSG_AZAN,
+                 (i == 2 && friday) ? MSG_JUMAA : prayerName(i));
         displayText(dispState.runText, nullptr, true, true, now);
       }
       return;
@@ -474,17 +488,15 @@ void checkPrayers(unsigned long now, int16_t nowMins)
     if (since >= 2 && since < eq - 1)
     {
       dispState.setStopCards(true);
-      snprintf(dispState.runText, sizeof(dispState.runText),
-               dispParams.isSmall ? "_ukUH %d HrB _XaU}A" : "H %d HrB _XaU}A",
+      snprintf(dispState.runText, sizeof(dispState.runText), MSG_EQAMA_IN,
                (pt + eq) - nowMins);
-      displayText(dispState.runText, "\"XaN ;CazWA @", false, true, now);
+      displayText(dispState.runText, MSG_EQAMA, false, true, now);
       return;
     }
     if (since == eq - 1)
     {
       dispState.setStopCards(true);
-      snprintf(dispState.runText, sizeof(dispState.runText),
-               dispParams.isSmall ? "_kYaD %d HrB _XaU}A" : "%d HrB _XaU}A",
+      snprintf(dispState.runText, sizeof(dispState.runText), MSG_EQAMA_SEC,
                60 - timeData.sec);
       displayText(dispState.runText, nullptr, false, true, now);
       return;
@@ -492,7 +504,7 @@ void checkPrayers(unsigned long now, int16_t nowMins)
     if (since == eq)
     {
       dispState.setStopCards(true);
-      displayText("_XaU}A", nullptr, true, true, now);
+      displayText(MSG_EQAMA, nullptr, true, true, now);
       return;
     }
     if (since > eq && since < eq + sleepTime)
@@ -504,9 +516,7 @@ void checkPrayers(unsigned long now, int16_t nowMins)
     if (since >= eq + sleepTime && since < eq + 1 + sleepTime)
     {
       dispState.setStopCards(true);
-      snprintf(dispState.runText, sizeof(dispState.runText),
-               dispParams.isSmall ? "_}nWA JaVIAh ^ylWA (yC}" : "_}nWA JaVIAh");
-      displayText(dispState.runText, "^ylWA (yC}", false, true, now);
+      displayText(AZKAR_AFTER, AZKAR_AFTER2, false, true, now);
       return;
     }
   }
@@ -551,8 +561,7 @@ void cardBigFontOnly(uint8_t type)
   case 0:
     if (cachedDayIndex != timeData.dow)
     {
-      safeCopyP(cachedDayName, dayNameGlobal[timeData.dow],
-                sizeof(cachedDayName));
+      safeCopyP(cachedDayName, dayName(), sizeof(cachedDayName));
       cachedDayIndex = timeData.dow;
     }
     safeCopy(fmtBuf, cachedDayName, sizeof(fmtBuf));
@@ -565,7 +574,7 @@ void cardBigFontOnly(uint8_t type)
     int8_t monthIdx = timeData.hMonth - 1;
     if (cachedMonthIndex != monthIdx)
     {
-      safeCopyP(cachedMonthName, arabicMonthName[monthIdx],
+      safeCopyP(cachedMonthName, hijriMonthName(timeData.hMonth),
                 sizeof(cachedMonthName));
       cachedMonthIndex = monthIdx;
     }
@@ -590,7 +599,7 @@ void cardRamadan()
     nextCard();
     return;
   }
-  snprintf(fmtBuf, sizeof(fmtBuf), "?hj %d HrB ^aoXJ", days);
+  snprintf(fmtBuf, sizeof(fmtBuf), "باقي %d يوم على رمضان", days);
   drawCard(fmtBuf);
 }
 void cardEvent()
@@ -630,7 +639,7 @@ void cardTemp()
   if (dispState.firstShow())
   {
     cachedTemp = (int)rtc.getTemperature() - 2;
-    snprintf(fmtBuf, sizeof(fmtBuf), "%d  _JAJfWA _EJH", cachedTemp);
+    snprintf(fmtBuf, sizeof(fmtBuf), "الحرارة %d درجة", cachedTemp);
   }
   drawCard(fmtBuf);
 }
@@ -684,7 +693,7 @@ void cardPrayers()
       p += 2;
       *p++ = ' ';
       // Copy prayer name
-      const char *name = TimeName[i];
+      const char *name = prayerName(i);
       while (*name)
         *p++ = *name++;
       *p++ = ' ';
@@ -774,7 +783,8 @@ void applySettings()
   dispParams.areaY = dispParams.isSmall ? 8 : 0;
   dispParams.areaH = dispParams.isSmall ? 8 : DISPLAY_HEIGHT;
 
-  dmd.setFont(dispParams.isSmall ? Janat7 : Janat16);
+  smartText.setShaping(config.language == LANG_AR);
+  dmd.setFont(dispParams.isSmall ? Janat7Ext : Janat16Ext);
   dmd.setBrightness(effectiveBrightness());
   static const uint16_t speeds[] = {70, 60, 50, 40, 30, 20};
   dispState.scrollSpeed =
@@ -807,7 +817,7 @@ void handleTestMode()
 }
 void handleGetData()
 {
-  char buf[BUF_LARGE], out[768];
+  static char buf[640], out[2400];
   snprintf(
       buf, sizeof(buf),
       "Data,%d,%d,%d,%d,%d,%d,%d,%d,%.4f,%.4f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
@@ -864,6 +874,7 @@ void handleSetSettings()
   config.brightness = getArgInt("bri", config.brightness);
   config.powerSaveAfterIsha = getArgInt("psai", config.powerSaveAfterIsha);
   config.powerSaveBeforeFajr = getArgInt("psbf", config.powerSaveBeforeFajr);
+  config.language = getArgInt("lang", config.language);
   applySettings();
   saveRespond("settingsOk");
 }
@@ -963,9 +974,9 @@ void testMode()
 void splashScreen()
 {
   dmd.clear();
-  dmd.setFont(Janat7);
-  dmd.drawText((DISPLAY_WIDTH - dmd.textWidth("\"akeXJbwW PklB")) >> 1, -1,
-               "\"akeXJbwW PklB");
+  dmd.setFont(Janat7Ext);
+  dmd.drawText((DISPLAY_WIDTH - dmd.textWidth(SPLASH_TITLE)) >> 1, -1,
+               SPLASH_TITLE);
   dmd.drawText((DISPLAY_WIDTH - dmd.textWidth("01030007330")) >> 1, 8,
                "01030007330");
   applySettings();
@@ -1119,7 +1130,7 @@ void loop()
     {
       dispState.setStopCards(true);
       smartText.setArea(0, DISPLAY_HEIGHT);
-      smartText.drawFlash("\"UhWA PbOA", dispParams.yPos, now);
+      smartText.drawFlash(RTC_FAIL_TEXT, dispParams.yPos, now);
     }
     else
     {
