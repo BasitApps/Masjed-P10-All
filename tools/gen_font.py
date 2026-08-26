@@ -420,6 +420,49 @@ inline bool lookupSlot(uint16_t cp, uint8_t &slot) {{
 # ---------------------------------------------------------------------------
 # TTF rendering
 # ---------------------------------------------------------------------------
+def _notdef_bitmap(font, canvas):
+    """Bitmap of the font's .notdef glyph (via an unassigned codepoint)."""
+    from PIL import Image, ImageDraw
+    img = Image.new("1", canvas, 0)
+    d = ImageDraw.Draw(img)
+    d.text((canvas[0] // 4, canvas[1] // 2), "\u0378", font=font, fill=1,
+           anchor="ls")
+    b = img.getbbox()
+    if b is None:
+        return frozenset()
+    return frozenset((x, y) for y in range(b[1], b[3]) for x in range(b[0], b[2])
+                     if img.getpixel((x, y)))
+
+
+def _is_notdef(font, cp, canvas, ref):
+    """True if cp renders as the .notdef box (missing glyph)."""
+    from PIL import Image, ImageDraw
+    img = Image.new("1", canvas, 0)
+    d = ImageDraw.Draw(img)
+    d.text((canvas[0] // 4, canvas[1] // 2), chr(cp), font=font, fill=1,
+           anchor="ls")
+    b = img.getbbox()
+    if b is None:
+        return True
+    bits = frozenset((x, y) for y in range(b[1], b[3])
+                     for x in range(b[0], b[2]) if img.getpixel((x, y)))
+    return bits == ref
+
+
+def _validate_coverage(font, cps, fatal=True):
+    """Reject fonts whose 'coverage' is fake (.notdef boxes). Returns missing."""
+    canvas = (256, 256)
+    ref = _notdef_bitmap(font, canvas)
+    missing = [cp for cp in cps if _is_notdef(font, cp, canvas, ref)]
+    if missing and fatal:
+        sample = " ".join(f"U+{c:04X}" for c in missing[:15])
+        sys.exit(f"ERROR: font lacks {len(missing)} glyphs (notdef), "
+                 f"e.g.: {sample}\n"
+                 "Known-good: tahoma.ttf, arial.ttf, trado.ttf, segoeui.ttf, "
+                 "majalla.ttf. (simpbdo lacks 23 final forms!)")
+    return missing
+
+
 def _probe_size(path_ttf, needed, height):
     """Pick a FreeType pixel size whose ink span best fits `height` rows."""
     from PIL import ImageFont
@@ -455,8 +498,22 @@ def ttf_render(path_ttf, height, method="direct"):
     if method == "direct":
         # Render at a hinted pixel size close to the target height; no
         # rescaling. Produces crisper small sizes than supersampling.
-        probe_px = _probe_size(path_ttf, needed, height)
-        big = ImageFont.truetype(str(path_ttf), probe_px)
+        base_px = _probe_size(path_ttf, needed, height)
+        big = None
+        for attempt in range(4):
+            cand = ImageFont.truetype(str(path_ttf), base_px + attempt)
+            miss = _validate_coverage(cand, needed, fatal=False)
+            if not miss:
+                big = cand
+                break
+            if not all(0x20 <= c <= 0x7E for c in miss):
+                sys.exit(f"ERROR: Arabic forms missing at pixel size "
+                         f"{base_px + attempt}: "
+                         + " ".join(f"U+{c:04X}" for c in miss[:8]))
+        if big is None:
+            sys.exit(f"ERROR: no hinted size renders all ASCII "
+                     f"(base {base_px})")
+        _probe_px = base_px + attempt
         boxes = {}
         for cp in needed:
             bb = big.getbbox(chr(cp), anchor="ls")
@@ -469,6 +526,7 @@ def ttf_render(path_ttf, height, method="direct"):
         pad = 2
     else:
         big = ImageFont.truetype(str(path_ttf), HI)
+        _validate_coverage(big, needed)
         boxes = {}
         for cp in needed:
             bb = big.getbbox(chr(cp), anchor="ls")
@@ -561,7 +619,8 @@ def cmd_preview(args):
                           "لا إله إلا الله محمد رسول الله",
                           "عيدكم مبارك وكل عام وأنتم بخير",
                           "12:30 25-12-1447"]
-    W = 132 * S
+    W = max((sum(font.get_glyph(b).__len__() if font.get_glyph(b) else 4
+                 for b in shape(t)) for t in texts), default=20) * S + 8 * S
     H = (len(texts) * (font.height + 6) + 2) * S
     img = Image.new("1", (W, H), 0)
     d = ImageDraw.Draw(img)
