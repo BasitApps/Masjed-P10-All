@@ -4,7 +4,8 @@
 > Keep the "Current step" line accurate at all times — it is the first thing
 > any new session reads.
 
-**Current step:** Phase 0 (cleanup + git + handoff docs) → then Phase 1.
+**Current step:** Phase 1 DONE → **STOP: owner visual review of previews** →
+then Phase 2 (ArabicShaper C++).
 
 ## Phase 0 — Cleanup & Continuity Infrastructure
 - [x] Delete `lib/RTClib - Copy/` and `tmp_dst_check.py`
@@ -15,13 +16,20 @@
 - [ ] Branch `feature/arabic-support`
 
 ## Phase 1 — Font Tooling (`tools/gen_font.py`)
-- [ ] Parser for existing GLCD font headers (Janat7.h / Janat16.h) → extract glyph bitmaps per ASCII slot
-- [ ] Mapping table: legacy ASCII slot ↔ Arabic glyph form identity (see FONT_SPEC)
-- [ ] Mode `extract`: rebuild extended fonts from existing Janat artwork
-- [ ] Mode `ttf`: render glyphs from an Arabic TTF via Pillow/freetype
-- [ ] Mode `preview`: render sample Arabic strings to PNG using generated font data
-- [ ] Outputs: `lib/DMDESP/fonts/Janat7Ext.h` + `Janat16Ext.h` (GLCD format, first=0x20 count=0xE0)
+- [x] Parser for existing GLCD font headers (Janat7.h / Janat16.h) → extract glyph bitmaps per ASCII slot
+- [x] Mapping table: legacy ASCII slot ↔ Arabic glyph form identity (see FONT_SPEC)
+- [x] Mode `extract`: rebuild extended fonts from existing Janat artwork (works; awaits owner mapping JSON)
+- [x] Mode `ttf`: render glyphs from an Arabic TTF via Pillow (methods: `direct` hinted / `supersample`)
+- [x] Mode `preview`: render sample Arabic strings to PNG using generated font data
+- [x] Outputs: `lib/DMDESP/fonts/Janat7Ext.h` + `Janat16Ext.h` (GLCD format, first=0x20 count=0xE0)
+  - generated from `C:/Windows/Fonts/trado.ttf` (Traditional Arabic) via `direct` method
+  - `src/arabic_glyph_map.h` emitted alongside (Unicode presentation form → slot)
+- [x] Reference shaper in Python verified: lam-alef, form selection, RTL word
+  order, digits kept LTR inside Arabic lines
 - [ ] **STOP: owner visual review of previews before continuing**
+  - see `tools/out/preview_trado16_direct.png` (GOOD), `preview_trado7_direct.png` (weak — 7px Arabic from TTF is inherently rough)
+  - decision needed: 7px strategy → (a) extract owner's Janat7 art via mapping JSON, (b) accept TTF 7px, (c) drop small-font mode
+  - alternative fonts ready to try: arial.ttf, tahoma.ttf, segoeui.ttf, majalla.ttf, simpbdo.ttf (all cover the 127 forms)
 
 ## Phase 2 — Runtime Shaper (`src/ArabicShaper.{h,cpp}`)
 - [ ] UTF-8 decoder
