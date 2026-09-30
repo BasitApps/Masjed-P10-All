@@ -4,7 +4,12 @@
 > Keep the "Current step" line accurate at all times — it is the first thing
 > any new session reads.
 
-**Current step:** 2026-09-30: card text review. Corrected Hijri date logical
+**Current step:** 2026-10-01: Release Candidate 1 packaged and tagged as
+`firmware-rc1`; all four P10 release profiles build successfully and their
+SHA-256 manifest is stored under `release/firmware-rc1/`. Owner hardware
+installation and soak test are the remaining gates before a commercial tag.
+
+Previous step: 2026-09-30: card text review. Corrected Hijri date logical
 order for the RTL shaper in both the rotating small-font info line and the
 Hijri card used on narrow panels, and standardized the large Gregorian card
 to `YYYY-MM-DD`. The Basit hamza glyph was redrawn for both 7px and 16px
@@ -122,6 +127,8 @@ Reliability soak remains paused by the owner.
 - [~] Reliability soak: paused by owner; restart from zero after font/app work
 - [ ] Merge `feature/arabic-support` into `main`
 - [ ] Update README.md (new Arabic pipeline, app protocol notes)
+- [x] Package `P104-rc1` for 1x1, 2x1, 3x1, and 4x1 with SHA-256 manifest;
+      tag `firmware-rc1` (no hardware upload performed)
 
 ## Restart Bug — Root Cause & Fix
 **Symptom:** Firmware restarts continuously after boot.

@@ -14,7 +14,7 @@
 // ============ VERSION ============
 #define EEPROM_VERSION 6
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "P104-dev"
+#define FIRMWARE_VERSION "P104-rc1"
 #endif
 #define MIN_VALID_YEAR 2025
 
