@@ -59,6 +59,8 @@ public:
 
   void loop();
   void refresh();
+  void pause();
+  void resume();
 
   void start();
 
@@ -72,6 +74,7 @@ private:
 
   uint16_t cr;
   bool _doubleBuffer;
+  bool _paused;
   uint8_t phase;
   uint8_t *fb0;
   uint8_t *fb1;

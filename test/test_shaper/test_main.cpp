@@ -58,6 +58,20 @@ void test_harakat_dropped() {
   TEST_ASSERT_EQUAL_STRING("\x8A\xE5\xAD\xE4", out);
 }
 
+void test_standalone_hamza_maps_to_font_slot() {
+  char out[8];
+  size_t n = ArabicShaper::shape(u8"ء", out, sizeof(out));
+  TEST_ASSERT_EQUAL_size_t(1, n);
+  TEST_ASSERT_EQUAL_UINT8(0x80, static_cast<uint8_t>(out[0]));
+}
+
+void test_hamza_in_day_name_is_not_replaced() {
+  char out[32];
+  size_t n = ArabicShaper::shape(u8"الأربعاء", out, sizeof(out));
+  TEST_ASSERT_GREATER_THAN_size_t(0, n);
+  TEST_ASSERT_EQUAL_UINT8(0x80, static_cast<uint8_t>(out[0]));
+}
+
 void test_buffer_truncation_safe() {
   char out[4];
   size_t n = ArabicShaper::shape("الله الله", out, sizeof(out));
@@ -85,14 +99,23 @@ void test_preformed_passthrough() {
   TEST_ASSERT_EQUAL_STRING("\xEE", out);
 }
 
+void test_indic_digits_keep_numeric_order() {
+  char out[48];
+  ArabicShaper::shape(u8"٠١٢٣٤٥٦٧٨٩ ۱۲:۳۰", out, sizeof(out));
+  TEST_ASSERT_EQUAL_STRING("0123456789 12:30", out);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_golden_vectors);
   RUN_TEST(test_ascii_passthrough);
   RUN_TEST(test_harakat_dropped);
+  RUN_TEST(test_standalone_hamza_maps_to_font_slot);
+  RUN_TEST(test_hamza_in_day_name_is_not_replaced);
   RUN_TEST(test_buffer_truncation_safe);
   RUN_TEST(test_null_and_empty);
   RUN_TEST(test_invalid_utf8_becomes_question);
   RUN_TEST(test_preformed_passthrough);
+  RUN_TEST(test_indic_digits_keep_numeric_order);
   return UNITY_END();
 }

@@ -4,12 +4,30 @@
 #include "SmartText.h"
 #include "ArabicShaper.h"
 
+static inline bool englishLetter(unsigned char c) {
+  return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+}
+
+static inline bool needsEnglishGap(unsigned char a, unsigned char b) {
+  return englishLetter(a) && englishLetter(b);
+}
+
+static inline bool asciiDigit(unsigned char c) {
+  return c >= '0' && c <= '9';
+}
+
 SmartText::SmartText(DMDESP &d, int16_t w)
     : disp(d), width(w), textW(0), scrollX(0), lastMs(0), flashMs(0), speed(50),
       flashSpeed(1000), areaY(0), areaH(16), drawY(0), isNew(true),
-      flashVisible(true), shaping(true) {
+      flashVisible(true), shaping(true), rightToLeft(false), dirty(false) {
   text[0] = '\0';
   srcCache[0] = '\0';
+}
+
+bool SmartText::consumeDirty() {
+  const bool changed = dirty;
+  dirty = false;
+  return changed;
 }
 
 void SmartText::reset() {
@@ -22,16 +40,24 @@ void SmartText::reset() {
 }
 
 inline void SmartText::clearArea() {
+  dirty = true;
   disp.drawFilledRect(0, areaY, width - 1, areaY + areaH - 1, Bitmap::Black);
 }
 
 void SmartText::drawTextFast(int x, int y, const char *str) {
+  dirty = true;
   uint8_t charCount = 0;
   while (*str && x < width) {
-    int charWidth = disp.drawChar(x, y, *str++);
+    const unsigned char current = static_cast<unsigned char>(*str);
+    int charWidth = disp.drawChar(x, y, *str);
     if (charWidth <= 0)
       charWidth = 1;
     x += charWidth;
+    const unsigned char next = static_cast<unsigned char>(str[1]);
+    if ((rightToLeft && needsEnglishGap(current, next)) ||
+        (!rightToLeft && asciiDigit(current) && asciiDigit(next)))
+      ++x;
+    ++str;
     if (++charCount >= 8) { // Yield every 8 characters
       yield();
       disp.loop();
@@ -65,6 +91,13 @@ bool SmartText::updateText(const char *src, int8_t y) {
       text[BUF_TEXT - 1] = '\0';
     }
     textW = disp.textWidth(text);
+    for (size_t i = 1; text[i]; ++i) {
+      const unsigned char previous = static_cast<unsigned char>(text[i - 1]);
+      const unsigned char current = static_cast<unsigned char>(text[i]);
+      if ((rightToLeft && needsEnglishGap(previous, current)) ||
+          (!rightToLeft && asciiDigit(previous) && asciiDigit(current)))
+        ++textW;
+    }
     isNew = true;
     clearArea();
     return true;
@@ -74,7 +107,7 @@ bool SmartText::updateText(const char *src, int8_t y) {
 
 bool SmartText::draw(const char *src, int8_t y, unsigned long now) {
   if (updateText(src, y) || !src) {
-    scrollX = -textW;
+    scrollX = rightToLeft ? width : -textW;
     lastMs = now;
     if (!src)
       return false;
@@ -103,14 +136,19 @@ bool SmartText::draw(const char *src, int8_t y, unsigned long now) {
     return false;
   lastMs = now;
 
-  if (++scrollX >= width) {
+  if (rightToLeft) {
+    if (--scrollX <= -textW) {
+      scrollX = width;
+      return true;
+    }
+  } else if (++scrollX >= width) {
     scrollX = -textW;
     return true;
   }
 
   // For scrolling: clear only the trailing edge (where text is scrolling out)
   // This is more efficient than clearing the entire area every frame
-  int16_t clearX = scrollX - 1;
+  int16_t clearX = rightToLeft ? scrollX + textW : scrollX - 1;
   if (clearX >= 0 && clearX < width) {
     // Clear the column that just scrolled out of view
     disp.drawFilledRect(clearX, areaY, clearX, areaY + areaH - 1,

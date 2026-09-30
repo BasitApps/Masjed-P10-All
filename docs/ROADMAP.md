@@ -4,9 +4,25 @@
 > Keep the "Current step" line accurate at all times — it is the first thing
 > any new session reads.
 
-**Current step:** Phases 0-4 DONE (build + tests green). Remaining:
-owner wording review of texts.h, 7px extraction decision, hardware test,
-merge to main.
+**Current step:** 2026-09-30: card text review. Corrected Hijri date logical
+order for the RTL shaper in both the rotating small-font info line and the
+Hijri card used on narrow panels, and standardized the large Gregorian card
+to `YYYY-MM-DD`. The Basit hamza glyph was redrawn for both 7px and 16px
+families (including Indic digits). In 12-hour mode the 64px clock zone now
+shows a shaped Arabic `ص/م` marker to the left of the time (or `AM/PM` in
+English); it is omitted on
+narrow panels to prevent clipping. The top Hijri line tries `day month year`
+and falls back to a shorter month form only when its measured width requires
+it. Release builds pass for 1x1, 2x1, 3x1, and 4x1; native tests pass 19/19
+when the bundled GCC path is supplied. Text caches now invalidate when the
+display language changes.
+Long Hijri month names still use a compact top-line fallback so they cannot
+overlap the clock zone; full names remain in scrolling cards.
+Reliability soak remains paused by the owner.
+
+**Commercial v2:** مؤجل حاليًا. المسار التجاري المعتمد هو `/updateMain`
+للحفاظ على توافق واستقرار الأجهزة القديمة؛ لا يبدأ ترحيل OTA جديد إلا بقرار
+مستقل واختبار على أجهزة السوق.
 
 ## Phase 0 — Cleanup & Continuity Infrastructure
 - [x] Delete `lib/RTClib - Copy/` and `tmp_dst_check.py`
@@ -22,11 +38,15 @@ merge to main.
 - [x] Mode `extract`: rebuild extended fonts from existing Janat artwork (works; awaits owner mapping JSON)
 - [x] Mode `ttf`: render glyphs from an Arabic TTF via Pillow (methods: `direct` hinted / `supersample`)
 - [x] Mode `preview`: render sample Arabic strings to PNG using generated font data
-- [x] Outputs: `lib/DMDESP/fonts/Janat7Ext.h` + `Janat16Ext.h` (GLCD format, first=0x20 count=0xE0)
+- [x] Outputs: `lib/DMDESP/fonts/BasitFont7.h` + `BasitFont16.h` and
+      `Tahoma7.h` + `Tahoma16.h` (GLCD format, first=0x20 count=0xE0)
   - generated from `C:/Windows/Fonts/trado.ttf` (Traditional Arabic) via `direct` method
   - `src/arabic_glyph_map.h` emitted alongside (Unicode presentation form → slot)
 - [x] Reference shaper in Python verified: lam-alef, form selection, RTL word
   order, digits kept LTR inside Arabic lines
+- [x] Fix TTF size probing: reject ink boxes taller than the target bitmap.
+  The previous 16px candidate selected a 20px ink box and clipped descenders;
+  corrected preview: `tools/out/preview_trado16_fixed.png` (not yet shipped)
 - [ ] **STOP: owner visual review of previews before continuing**
   - see `tools/out/preview_trado16_direct.png` (GOOD), `preview_trado7_direct.png` (weak — 7px Arabic from TTF is inherently rough)
   - decision needed: 7px strategy → (a) extract owner's Janat7 art via mapping JSON, (b) accept TTF 7px, (c) drop small-font mode
@@ -49,25 +69,151 @@ merge to main.
 - [x] Rewrite `src/texts.h` with real Arabic UTF-8 (**wording = best-effort
       draft; OWNER MUST REVIEW event/azkar strings**)
 - [x] `config.language` field (0=ar, 1=en) + English day/month/prayer-name strings
-- [x] `EEPROM_VERSION 3`, message 240 / masjedName 100,
+- [x] English fixed-text coverage for prayer events, Iqama, azkar, calendar events,
+      temperature, RTC and OTA messages; English scrolling runs right-to-left
+- [x] `EEPROM_VERSION 4`, message 240 / masjedName 100,
       `BUF_LARGE`/`BUF_TEXT` 256, static blur buffers in `handleGetData`
 - [x] Wire shaper into `SmartText` (`setShaping`, srcCache + shaped buffer)
-- [x] `applySettings()`: Janat7Ext/Janat16Ext + shaping toggle by language
+- [x] `applySettings()`: BasitFont7/16 or Tahoma7/16 + shaping toggle by language
 - [x] API: `lang` param in `/setSettings` (expose in `/getData` pending:
       language not yet in the CSV — app reads settings back? add if needed)
 - [x] App contract note: app sends plain UTF-8 through existing blur transport
 
+## Phase 4B — Selectable Font Families
+- [x] Stable contract: Basit/Janat and Tahoma families, each with 7px and 16px variants;
+      small/large selection remains independent
+- [x] Persistent `/setFont?font=0..1&lang=0..1&digits=0..1` selector; legacy Arial EEPROM values migrate to Basit.
+      changing EEPROM layout/version; selection resets to family 0 after reboot
+- [x] Family 0 renamed to BasitFont7/BasitFont16, built from legacy Janat
+      artwork; absent contextual forms reuse the nearest Janat form
+- [x] Tahoma generated with joining-edge bearings; Arial Bold removed from the product build.
+      Traditional rejected during physical review
+- [x] `fontFamily`, `language`, and `digitStyle` are persisted; Arabic remains
+      the default display language
+- [x] Validated `font`, `lang`, and `digits` parameters are exposed by the
+      firmware and Android selector
+- [x] Basit ASCII letters/punctuation use the Tahoma-derived artwork while
+      Arabic slots remain Janat-derived; Western/Indic digits stay under the
+      dedicated digit generator. Regeneration is reproducible with
+      `tools/build_digit_fonts.py` then `tools/build_english_hybrid.py`.
+- [x] Generated font headers now label every width/glyph block with its ASCII
+      character or Arabic Unicode/form name; `tools/annotate_font.py` applies
+      the same labels to editor-exported headers.
+- [x] All eight runtime font variants (Basit/Tahoma, 7/16px, Western/Indic)
+      have matching editable `.ftsd` projects in `GLCDFontCreator2`.
+- [x] Added `tools/import_fontcreator.py` and `build_fonts_release.bat`:
+      validate all eight FontCreator exports, regenerate labeled production
+      headers atomically, then build the four ESP8266 release profiles.
+- [x] Removed unused legacy DMDESP font headers from the production tree;
+      retained only runtime families and Janat7/Janat16 source fonts needed by
+      the reproducible font-generation tools
+
 ## Phase 5 — Verification & Delivery
-- [x] `pio run` passes; `pio test -e native` passes
+- [x] `pio run` passes; `pio test -e native` passes (10/10)
+- [x] Fix: copy all runtime-used `PROGMEM` strings to bounded RAM buffers (D9)
+- [x] Fix: guarded `effectiveBrightness()` and removed its direct RTC read (D8)
+- [x] Restore original DMDESP timer calls after hardware showed slow top-to-bottom
+      row painting with their removal (D12; D7 superseded)
 - [ ] Owner wording review of texts.h strings (events/azkar/splash)
-- [ ] 7px font decision: extract Janat7 art (needs owner mapping JSON,
-      see `tools/out/legacy_janat7_sheet.png` + `extract` mode) or keep TTF 7px
-- [ ] Hardware test by owner (visual on P10 wall)
+- [x] 7px BasitFont extracted from Janat7; other families use generated 7px
+      assets
+- [x] Hardware test by owner: P10 image and movement confirmed excellent;
+      API, invalid/valid OTA, and 20 resets passed
+- [~] Reliability soak: paused by owner; restart from zero after font/app work
 - [ ] Merge `feature/arabic-support` into `main`
 - [ ] Update README.md (new Arabic pipeline, app protocol notes)
+
+## Restart Bug — Root Cause & Fix
+**Symptom:** Firmware restarts continuously after boot.
+
+**Proven root cause:** `SPLASH_TITLE` is stored in flash (`PROGMEM`) but was
+passed directly to DMDESP as if it were a RAM string. The physical boot log
+reported `Exception (3)` and `excvaddr=0x4024d023`; that address matched the
+`SPLASH_TITLE` symbol exactly, while the decoded stack pointed to
+`splashScreen()` → `setup()`.
+
+**Fix:** Copy `SPLASH_TITLE` and all other runtime-used flash strings into
+bounded RAM buffers before passing them to RAM-string APIs; use `snprintf_P()`
+for flash format strings. `effectiveBrightness()` was also changed to use
+cached `timeData`, so it cannot access the RTC before `rtc.begin()`. The fixed
+firmware was uploaded to COM5 and reached `RTC OK` / `Setup done` without an
+exception or repeated boot during the initial serial test. See D8 and D9 in
+DECISIONS.md.
+
+**Display follow-up:** Removing DMDESP's original timer calls caused visibly
+slow top-to-bottom row painting on the real P10. Both calls were restored and
+the vendored library is back to its repository version; see D12.
 
 ## Known Pitfalls (do not relearn these the hard way)
 - `drawChar` uses `(uint8_t)ch` — bytes ≥0x80 work with extended fonts without DMDESP changes.
 - Shaped output length ≤ input length (UTF-8 2 bytes/glyph → 1 byte/glyph out); size buffers accordingly.
 - Do NOT reverse digits or `:` inside Arabic lines (times look wrong).
 - `renameFirmware.py` pre-build script must stay wired in platformio.ini.
+
+## 2026-09-28 - Card scheduler
+- [x] Added EEPROM sidecar preferences without changing `EEPROM_VERSION`.
+- [x] Added validated card enable mask and order with `/getCardSettings` and
+      `/setCardSettings`; legacy `/getData` and `/updateMain` remain unchanged.
+- [x] Added P10 Android card settings dialog with enable/disable and ordering.
+- [x] 4x1 release built and uploaded to COM5; RAM 45.4%, Flash 41.4%.
+- [x] Native scheduler/shaper/time tests pass (17/17) with the PlatformIO GCC
+      toolchain path supplied on Windows.
+
+## 2026-09-28 - Narrow small-font information layout
+- [x] On 2x1/1x1 small-font profiles, day/Gregorian/Hijri cards render in the
+      lower row instead of being skipped; the clock remains fixed on top.
+- [x] 4x1 small-font top-right rotation remains unchanged.
+- [x] Firmware builds pass for `p10_4x1`, `p10_2x1`, and `p10_1x1`.
+- [ ] Physical verification on 2x1/1x1 remains with the owner; no upload done.
+
+## 2026-09-28 - Sunrise iqama
+- [x] Sunrise iqama defaults to 10 minutes when legacy EEPROM contains zero.
+- [x] v2 API now returns the saved sunrise iqama and the runtime honors it.
+- [x] Built and uploaded `p10_4x1` to COM5; esptool hash verification passed.
+- [ ] Owner should verify the sunrise event window physically.
+
+## 2026-09-28 - RTC bus recovery
+- [x] P10 uses 100 kHz I2C and bounded SDA/SCL recovery before retrying DS3231.
+- [x] RTC reads/writes stay guarded; the main loop does not restart on RTC loss.
+- [x] Applied the same guarded recovery pattern to `Masjed_TA_All_v2` 7-segment
+      source; owner still needs the physical disconnect/reconnect test.
+- [x] Added a startup-only local RTC fault indicator: one P10 pixel or one
+      unused 7-segment position blinks without changing the normal layout.
+
+## 2026-09-28 - Display geometry profile
+- [x] Added one compile-time `DisplayProfile` for display zones and dimensions.
+- [x] Routed P10 top-line, small-font, card-placement, and diagnostics drawing
+      through the profile without changing the API or EEPROM layout.
+
+## 2026-09-28 - Technician health diagnostics
+- [x] Extended the existing authenticated `/v2/health` response with firmware
+      identity, reset reason, uptime, heap metrics, RSSI, AP clients, RTC state,
+      and time since the last RTC sync.
+- [x] Added a no-flash-write technician-only diagnostics action in Android.
+- [ ] Owner should build/upload this source revision and verify the diagnostics
+      dialog on a connected P10 clock.
+
+## 2026-09-28 - Production reliability checks
+- [x] Added authenticated `/v2/selfTest` for configuration, RTC, display init,
+      AP mode, heap, and profile checks.
+- [x] Added ESP8266 reset-info detail to the existing health response.
+- [x] PlatformIO already contains compile profiles for 1x1, 2x1, 3x1, and 4x1
+      plus matching release profiles; physical/build verification remains with
+      the owner.
+## 2026-09-30 - Local OTA progress display
+
+- [x] Draw received-file progress inside the shared OTA upload callback, with
+      a small fixed font and at most one changed frame per 150 ms.
+- [x] Android supplies optional file `size` on the unchanged `/updateMain`
+      endpoint; old apps still work with an indeterminate local indicator.
+- [x] Hold at 99% until firmware validation succeeds, then show 100% followed
+      by a static Arabic/English success message until the scheduled restart.
+- [x] Restore the normal display font and cards on failure or cancellation;
+      success takes priority over cards, prayers, splash, and test displays.
+- [x] Build 4x1 Release; prepare the raw Android firmware asset.
+- [ ] Owner: install once, then update again to check progress/success on P10;
+      also check cancellation and small-panel layouts. No hardware upload,
+      Android build/APK, or runtime tests performed in this step.
+- [x] After hardware showed persistent OTA flicker, disabled DMD output for
+      the transfer path; progress is intentionally app-side and the panel
+      resumes only for the final result.

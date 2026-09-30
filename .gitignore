@@ -10,6 +10,12 @@
 __pycache__/
 *.pyc
 tools/out/
+*.pkcs8.b64
+private.key
+public.key
+
+# Hardware soak logs
+logs/device-monitor-*.log
 
 # OS junk
 Thumbs.db

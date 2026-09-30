@@ -27,7 +27,14 @@ public:
       reset();
     }
   }
+  void setRightToLeft(bool on) {
+    if (rightToLeft != on) {
+      rightToLeft = on;
+      reset();
+    }
+  }
   void reset();
+  bool consumeDirty();
 
   bool isStatic() const { return textW <= width; }
 
@@ -44,7 +51,7 @@ private:
   int8_t areaY, areaH, drawY;
   char text[BUF_TEXT];
   char srcCache[BUF_TEXT];
-  bool isNew, flashVisible, shaping;
+  bool isNew, flashVisible, shaping, rightToLeft, dirty;
 };
 
 #endif

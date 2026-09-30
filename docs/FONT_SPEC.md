@@ -187,5 +187,36 @@ previews, and the OWNER visually confirms/corrects before anything ships.
 - `SmartText` stores SHAPED bytes internally; `textWidth()` operates on shaped
   buffer (plain byte sums — no changes needed in DMDESP).
 - English mode (`config.language==1`): skip shaper, use ASCII directly.
+- Scrolling direction is independent of glyph order: English enters from the
+  right and moves left; Arabic keeps the existing shaped rendering path.
 - Buffer sizing: shaped buffer ≥ `strlen(utf8 input)`; keep BUF_TEXT aligned
   with config.message size.
+
+## 8. Selectable font families
+
+- Current firmware contains two font families (`fontFamily` = 0..1):
+  BasitFont/Janat and Tahoma. Arial Bold was removed to keep the image and
+  selector small; old EEPROM value 2 is migrated to BasitFont on boot.
+- Each family provides a 7px and a 16px GLCD header with the exact same
+  `0x20..0xFF` slot contract. The existing small/large setting remains
+  independent from the family choice.
+- All font arrays stay in `PROGMEM`; selecting a family changes only the font
+  pointer and does not copy glyph data into RAM.
+- Basit's ASCII letters/punctuation use the same Tahoma-derived 7px/16px
+  artwork as the Tahoma family; Arabic slots (`0x80..0xFF`) remain
+  Janat-derived. Digit slots are generated separately and are never replaced
+  by a generic Latin overlay.
+- English letter pairs receive one runtime pixel of inter-letter spacing;
+  Arabic shaping stays zero-spacing for letters, while adjacent Arabic-number
+  digits receive one pixel so numeric strings remain readable.
+- API: `/setFont?font=0..1&lang=0..1&digits=0..1`; font, language, and digit
+  choices are stored in EEPROM and applied without reboot. Arabic remains the
+  default; English is available for the translated fixed strings and cards.
+  family 0 after reboot. Final firmware moves the validated field into the
+  coordinated settings/app contract.
+- `/getData` appends both `language` and `fontFamily` to the response contract.
+- Adding `fontFamily` to `Configuration` requires a coordinated EEPROM version
+  bump and matching Android release; do not upload that firmware while the old
+  app contract is still in use.
+- v1 families are fixed at build time. Runtime TTF parsing or LittleFS font
+  uploads are intentionally out of scope.

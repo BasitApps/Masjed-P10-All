@@ -65,6 +65,12 @@ size_t ArabicShaper::shape(const char *utf8, char *out, size_t outSize) {
   if (utf8) {
     while (*p && o + 1 < outSize) {
       uint32_t cp = nextCp(p);
+      // Normalize both Arabic digit ranges before bidi reordering. The
+      // selected font decides numeral artwork, not the numeric value/order.
+      if (cp >= 0x0660 && cp <= 0x0669)
+        cp = '0' + cp - 0x0660;
+      else if (cp >= 0x06F0 && cp <= 0x06F9)
+        cp = '0' + cp - 0x06F0;
       if (cp == 0xFFFFFFFF) {
         out[o++] = '?';
         prevJoinsLeft = false;
@@ -76,6 +82,15 @@ size_t ArabicShaper::shape(const char *utf8, char *out, size_t outSize) {
       uint8_t slot;
       if (presentationSlot((uint16_t)cp, slot)) {
         out[o++] = (char)slot;
+        prevJoinsLeft = false;
+        continue;
+      }
+
+      // Hamza is non-joining and has exactly one canonical slot. Keep this
+      // fast path independent of the PROGMEM form table; it also protects
+      // older generated maps that did not include U+0621.
+      if (cp == 0x0621) {
+        out[o++] = (char)0x80;
         prevJoinsLeft = false;
         continue;
       }

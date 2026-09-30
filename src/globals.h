@@ -2,6 +2,7 @@
 #define GLOBALS_H
 
 #include "constants.h"
+#include "DisplayProfile.h"
 #include <Arduino.h>
 
 // ============ PROGMEM Data ============
@@ -99,18 +100,39 @@ struct Configuration {
   int16_t city;
   char masjedName[100];
   char message[240];
+  char apPassword[64];
+  uint8_t mustChangePassword;
+    uint8_t fontFamily;
+    uint8_t digitStyle; // 0: 0123456789, 1: Indic; independent of language/font
+    uint8_t hour24; // Display only; RTC/prayer arithmetic always uses 24h.
 
   bool isValid() const {
-    return eepromVersion == EEPROM_VERSION && latitude >= -90.0f &&
-           latitude <= 90.0f && longitude >= -180.0f && longitude <= 180.0f &&
-           isSmallFont <= 1 && calcMethod <= 4 && wayMethod <= 1 &&
-           scrollingSpeed <= 5 && (language == 0 || language == 1);
+    const bool eqamaValid =
+        eqamaFajr >= 0 && eqamaFajr <= 120 && eqamaShrouq >= 0 &&
+        eqamaShrouq <= 120 && eqamaZohr >= 0 && eqamaZohr <= 120 &&
+        eqamaAsr >= 0 && eqamaAsr <= 120 && eqamaMagrb >= 0 &&
+        eqamaMagrb <= 120 && eqamaEsha >= 0 && eqamaEsha <= 120;
+    return eepromVersion == EEPROM_VERSION && isfinite(latitude) &&
+           latitude >= -90.0f && latitude <= 90.0f && isfinite(longitude) &&
+           longitude >= -180.0f && longitude <= 180.0f && calcMethod >= 0 &&
+           calcMethod <= 4 && wayMethod >= 0 && wayMethod <= 1 && dst >= -12 &&
+           dst <= 14 && hijriDayCorrection >= -3 && hijriDayCorrection <= 3 &&
+           summerTime >= 0 && summerTime <= 1 && eqamaValid &&
+           sleepGomaaTime >= 0 && sleepGomaaTime <= 120 &&
+           sleepPrayerTime >= 0 && sleepPrayerTime <= 120 && isSmallFont <= 1 &&
+           scrollingSpeed <= 5 && (language == LANG_AR || language == LANG_EN) &&
+           powerSaveAfterIsha >= 0 && powerSaveAfterIsha <= 720 &&
+           powerSaveBeforeFajr >= 0 && powerSaveBeforeFajr <= 720 &&
+           memchr(apPassword, '\0', sizeof(apPassword)) != nullptr &&
+           strlen(apPassword) >= 8 && strlen(apPassword) <= 63 &&
+             mustChangePassword <= 1 && fontFamily <= 2 && digitStyle <= 1 && hour24 <= 1;
   }
 
   void setDefaults() {
     eepromVersion = EEPROM_VERSION;
     calcMethod = wayMethod = dst = hijriDayCorrection = summerTime = 0;
-    eqamaFajr = eqamaShrouq = eqamaZohr = eqamaAsr = eqamaMagrb = eqamaEsha = 0;
+    eqamaFajr = eqamaZohr = eqamaAsr = eqamaMagrb = eqamaEsha = 0;
+    eqamaShrouq = 10;
     sleepGomaaTime = sleepPrayerTime = 0;
     latitude = longitude = 10.05f;
     country = government = password = wifiPassword = 0;
@@ -121,6 +143,13 @@ struct Configuration {
     city = 0;
     masjedName[0] = message[0] = '0';
     masjedName[1] = message[1] = '\0';
+    memcpy(apPassword, AP_PASSWORD, sizeof(AP_PASSWORD));
+    // Password changes are optional; a forgotten password is recovered by
+    // the physical factory-reset button.
+    mustChangePassword = 0;
+      fontFamily = 0;
+      digitStyle = 0;
+      hour24 = 0;
   }
 };
 
@@ -128,7 +157,7 @@ struct Configuration {
 inline void invalidateCaches(PrayerCache &p, int8_t &hijriDay) {
   p.valid = false;
   p.lastDay = -1;
-  p.activeStart = p.activeEnd = -1;
+  p.activeStart = p.activeEnd = INT16_MIN;
   hijriDay = -1;
 }
 
@@ -154,18 +183,23 @@ struct EqamaCache {
 
 // ============ Global Variable Definitions ============
 // Note: These use 'inline' (C++17) to avoid multiple definition errors
-inline PrayerCache prayerCache = {{0}, -1, -1, -1, false};
+inline PrayerCache prayerCache = {{0}, INT16_MIN, INT16_MIN, -1, false};
 inline SystemFlags sysFlags = {0x02, 0};
 inline DisplayState dispState = {{0}, {0}, 0, 50, 1, 0x01};
 inline TimeData timeData = {0, 1400, 0, 0, 0, 0, 0, 0, 1, 1};
-inline DisplayParams dispParams = {SMALL_FONT_Y_POS, 8, 8, true};
+inline DisplayParams dispParams = {DISPLAY_PROFILE.smallTextY,
+                                   DISPLAY_PROFILE.smallAreaY,
+                                   DISPLAY_PROFILE.smallAreaH, true};
 inline Configuration config;
 inline EqamaCache eqamaCache = {{-1, -1, -1, -1, -1, -1, -1}, -1};
 
 inline int8_t hijriLastDay = -1;
 inline unsigned long lastSecondMs = 0;
+inline unsigned long lastRtcSyncMs = 0;
+inline char resetReason[40] = "unknown";
+inline char resetInfo[96] = "unknown";
 inline int8_t cachedTemp = -99;
-inline char fmtBuf[32];
+inline char fmtBuf[BUF_SMALL];
 
 // String caches (sized for UTF-8 Arabic names)
 inline char cachedDayName[16] = {0};
@@ -178,11 +212,8 @@ inline const int8_t PRAYER_INDICES[6] = {0, 1, 2, 3, 4, 6};
 
 // Eqama cache refresh function
 inline void refreshEqamaCache() {
-  if (eqamaCache.times[0] == config.eqamaFajr &&
-      eqamaCache.sleepTime == config.sleepPrayerTime)
-    return;
   eqamaCache.times[0] = config.eqamaFajr;
-  eqamaCache.times[1] = 0;
+  eqamaCache.times[1] = config.eqamaShrouq;
   eqamaCache.times[2] = config.eqamaZohr;
   eqamaCache.times[3] = config.eqamaAsr;
   eqamaCache.times[4] = config.eqamaMagrb;

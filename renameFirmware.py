@@ -7,4 +7,4 @@ Import("env")
 #defines = {k: v for (k, v) in my_flags.get("CPPDEFINES")}
 # print(defines)
 #env.Replace(PROGNAME="firmware_test%s" % defines.get("VERSION"))
-env.Replace(PROGNAME="updateP104")
+env.Replace(PROGNAME="updateP104_%s" % env.subst("$PIOENV"))
