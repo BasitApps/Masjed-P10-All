@@ -26,8 +26,8 @@ is stored under `release/firmware-rc1/`. Commercial release is not yet authorize
 
 The P10/7-segment compatibility matrix is recorded in
 `docs/SEVEN_SEGMENT_COMPATIBILITY.md`. It identifies a legacy 7-segment
-PrayerTimes index mismatch (Sunset used as Maghrib); no cross-repository fix was
-applied.
+PrayerTimes index mismatch (Sunset used as Maghrib); it is now fixed in the
+separate 7-segment commit `8996bab`, pending fixed-date and hardware checks.
 
 Previous step: 2026-09-30: card text review. Corrected Hijri date logical
 order for the RTL shaper in both the rotating small-font info line and the

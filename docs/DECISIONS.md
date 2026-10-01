@@ -630,6 +630,13 @@ sequence therefore renders as one `?` without reading beyond the NUL-terminated
 input. Valid Arabic, presentation forms, digits, and existing golden vectors
 are unchanged.
 
+## D53 — Align the separate 7-segment prayer mapping (2026-10-01)
+
+The 7-segment repository now uses the same explicit angle table as P10, sets
+Maghrib to zero minutes after Sunset, reads Maghrib from `times[5]`, and skips
+Sunset (`times[4]`) for prayer events. The change is isolated in its own
+repository commit `8996bab`; P10 legacy/v2 APIs and EEPROM layout are unchanged.
+
 ## D44 — Normalize Iqama countdown distance across midnight (2026-10-01)
 
 Use `forwardMinuteDistance()` for the displayed minutes remaining until Iqama.
