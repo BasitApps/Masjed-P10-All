@@ -7,7 +7,9 @@ development. The current comprehensive prayer/iqama, simplicity, and performance
 review and progress log are in
 `docs/superpowers/plans/2026-10-01-firmware-comprehensive-review.md`.
 Entries below are historical; their completed markers do not close the new
-review. Plan prepared only; R0/R1 execution is next, no new build/upload/tests.
+review. R0/R1 are in progress; R2/R4 have initial source fixes and are verified
+by native/release builds. Makkah's optional rule is firmware-only for now;
+Android work is deferred in `docs/ANDROID_DEFERRED_PLAN.md`.
 
 ## Latest handoff — source-only, owner testing
 - Android commercial-hardening source resumed; DB serial/model mapping preserved.

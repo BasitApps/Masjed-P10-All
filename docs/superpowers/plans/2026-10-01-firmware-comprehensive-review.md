@@ -17,8 +17,11 @@
 - المقاسات المدعومة: 1×1، 2×1، 3×1، 4×1؛ ارتفاع الشاشة 16 بكسل. 4×2 خارج النطاق.
 - موضوع الخطوط انتهى حسب المالك: Basit/Tahoma، ارتفاع 7 و16، وأرقام غربية/هندية. لا إعادة توليد أو تغيير الرسم ضمن المراجعة إلا لعطل مثبت ومطلوب.
 - يوجد وقت إعداد الخطة تعديل محلي للمالك في `GLCDFontCreator2/BasitFont16.ftsd` و`lib/DMDESP/fonts/BasitFont16.h` وملفات تصدير/Java غير متتبعة. احفظها كما هي، وافحص `git status` من جديد عند الاستئناف.
-- تجهيز الخطة فقط مكتمل؛ لم تنفذ إصلاحات هذه المراجعة ولم تُشغّل اختبارات جديدة في هذه الخطوة.
-- **المهمة التالية:** R0، ثم R1: تثبيت السلوك الفعلي ومراجع الصلاة والإقامة قبل الإصلاح.
+- R0/R1 بدأا، ونُفذت إصلاحات R2/R4 الأولى مع اختبارات native وبناء المقاسات الأربعة؛
+  خيار مكة الجديد firmware-only ومسار Android الخاص به مؤجل في
+  `docs/ANDROID_DEFERRED_PLAN.md`.
+- **المهمة التالية:** إكمال R1/R2/R4 بالأرقام المرجعية وحدود النوافذ، ثم الانتقال
+  إلى تدقيق R5–R8 دون تغيير عقد الأجهزة القديمة.
 
 خط أساس RC1 من سجل البناء، وليس قياس heap أثناء التشغيل:
 
@@ -75,7 +78,7 @@ Android الصحيح: `C:/Users/m_nag/Desktop/Android_Projects/MasjedClockWiFi`�
 | البند | ما قرئ فعليًا | ما يجب إثباته |
 |---|---|---|
 | فهارس الصلاة | مكتبة PrayerTimes: 0 فجر، 1 شروق، 2 ظهر، 3 عصر، 4 غروب Sunset، 5 مغرب، 6 عشاء. PRAYER_INDICES الحالية `{0,1,2,3,4,6}` | هل اختيار index 4 للمغرب مقصود ويطابق كل الطرق؟ index 5 ليس شروقًا كما يقول AGENTS القديم |
-| طريقة مكة | calcPrayers يختار Makkah ثم يستدعي set_isha_angle(17.0) | هل setter يلغي عشاء الدقائق في أم القرى؟ ماذا ينص السلوك المعتمد، خصوصًا رمضان؟ |
+| طريقة مكة | `calcPrayers` يضبط Fajr/Maghrib/Isha على Custom صراحةً، مع `makkahIsha=0/1` | تحقق رقمي محلي للزاوية المتوافقة مقابل 90 دقيقة، دون تغيير المكتبة |
 | مفاتيح الكاش | PrayerCache.lastDay وhijriLastDay يخزنان رقم اليوم فقط؛ syncRTC يقارن dt.day | تغير الشهر/السنة مع بقاء رقم اليوم، أو تغير التوقيت/الإحداثيات/الطريقة، يجب أن يحدث الحساب المطلوب |
 | الإقامة الطويلة | checkPrayers يحتوي شرط استبعاد since>30 لبعض الأيام/الصلوات؛ الإعداد يسمح 0..120 | اختبار إقامة 31 و60 و120 دقيقة ونوافذ النوم؛ هل الاستبعاد يخالف الإعداد؟ |
 | عبور منتصف الليل | since يستخدم signedMinuteDelta لكن نص الدقائق المتبقية يستخدم `(pt+eq)-nowMins` | هل النص يعرض 1440 دقيقة إضافية بعد منتصف الليل؟ اختبر حالة محددة |
@@ -234,7 +237,7 @@ git diff --check
 | إنشاء خطة وتسليم سياق | [x] | 2026-10-01: هذا الملف وروابط الاستئناف؛ تغييرات توثيق فقط |
 | R0 خط الأساس والجرد | [x] | 2026-10-01: baseline في ledger و`r0-baseline.txt`؛ لا كود تغير |
 | R1 مواصفة الصلاة والإقامة | [~] | `docs/PRAYER_TIME_SPEC.md` و`docs/PRAYER_REFERENCE_CASES.csv`؛ الأرقام والقرارات المحلية معلقة |
-| R2 الحساب والكاش | [~] | 2026-10-01: explicit method table/setters added; numeric reference comparison remains |
+| R2 الحساب والكاش | [~] | 2026-10-01: explicit table + selectable Makkah rule; numeric reference comparison remains |
 | R3 الوقت وDST/RTC/التقويم | [ ] | حدود الانتقال والقفز والتعافي |
 | R4 نوافذ الصلاة والإقامة | [~] | 2026-10-01: cross-midnight countdown fixed; 0..120/Friday/Sunrise boundaries remain |
 | R5 تدقيق الذاكرة والبساطة | [ ] | جرد لكل ملفات المشروع وقياس قبل/بعد |
@@ -268,7 +271,8 @@ commit الدفعة (إن وُجد):
 - P2: تكلفة أو تكرار أو عرض يمكن تحسينه مع بقاء الوظيفة صحيحة.
 - لا refactor شامل لمجرد حجم الملف؛ التغييرات الصغيرة القابلة للإثبات هي الافتراضية.
 
-`R2-001 | P1 | src/Masjed-P104.cpp:calcPrayers | كل اختيار طريقة كان يستدعي Fajr/Isha setters التي تختار Custom، وMaghrib تركته الحالة الافتراضية غير المهيأة | إعدادات الطرق لم تكن صريحة؛ طريقة مكة لم تكن 90 دقيقة | الدليل: PrayerTimes.h/cpp ووقت البناء | أضيفت src/PrayerMethodConfig.h، وضُبطت قواعد Fajr/Maghrib/Isha صراحةً، وأضيفت forward declarations للـminute setters دون تعديل المكتبة | test_prayer_method_config 2/2، native 21/21، release profiles 4/4 | resolved in working tree, awaiting independent/local numeric reference and owner hardware check`.
+`R2-001 | P1 | src/Masjed-P104.cpp:calcPrayers | كل اختيار طريقة كان يستدعي Fajr/Isha setters التي تختار Custom، وMaghrib تركته الحالة الافتراضية غير المهيأة | إعدادات الطرق لم تكن صريحة | الدليل: PrayerTimes.h/cpp ووقت البناء | أضيفت src/PrayerMethodConfig.h، وضُبطت قواعد Fajr/Maghrib/Isha صراحةً، وأضيفت forward declarations للـminute setters دون تعديل المكتبة | test_prayer_method_config 3/3، native 23/23، release profile 1/1 بعد الدفعة؛ المقاسات الأربعة السابقة 4/4 | resolved in working tree, awaiting independent/local numeric reference and owner hardware check`.
+`R2-002 | P1 | src/Masjed-P104.cpp:calcPrayers + EEPROM sidecar | طريقة مكة تحتاج قرار 90 دقيقة ثابتة أو قاعدة الطريقة دون كسر الأجهزة القديمة | غياب خيار محفوظ في العقد السابق | sidecar offset 460 يحفظ mode 0/1، وv2 يقرأ/يكتب `makkahIsha` اختيارياً؛ CSV القديم لم يتغير | native method-mode tests 3/3 + release build; Android deferred in docs/ANDROID_DEFERRED_PLAN.md | resolved in working tree; Android UI and local numeric reference remain deferred`.
 `R4-001 | P1 | src/Masjed-P104.cpp:checkPrayers | بعد منتصف الليل كان عداد الإقامة يستخدم طرحًا خامًا رغم أن نافذة الحدث تعبر 1440 | قد تظهر قيمة أكبر من 1440 بدل الدقائق المتبقية | اختبار forward distance عبر منتصف الليل فشل قبل helper | أضيفت `forwardMinuteDistance()` واستخدمت في النص فقط مع إبقاء النافذة كما هي | `test_time_math` 5/5، native 22/22، release profiles 4/4 | resolved in working tree; event semantics still need hardware/reference cases`.
 
 ## 9. تعليمات الاستئناف المختصرة

@@ -8,6 +8,9 @@
 > already implemented. Legacy-encoding descriptions below are historical.
 > PrayerTimes index 1 is Sunrise, 4 is Sunset, 5 is Maghrib; verify the current
 > application mapping rather than following the outdated index description.
+> Makkah Isha now has a firmware-only `makkahIsha` mode (0=method rule,
+> 1=fixed 90 minutes); Android UI work is deferred in
+> `docs/ANDROID_DEFERRED_PLAN.md`.
 
 > **ملخص عربي:** ده مشروع فيرموير ESP8266 لشاشة LED Matrix (P10) لمسجد.
 > الشاشة 128×16 بكسل (4 لوحات P10). المشروع حالياً بيستخدم ترميز عربي مخصص قديم

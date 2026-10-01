@@ -191,6 +191,8 @@ inline DisplayParams dispParams = {DISPLAY_PROFILE.smallTextY,
                                    DISPLAY_PROFILE.smallAreaY,
                                    DISPLAY_PROFILE.smallAreaH, true};
 inline Configuration config;
+// Stored separately from Configuration to preserve the v6 EEPROM layout.
+inline uint8_t makkahIshaMode = 0; // 0: calculation method, 1: fixed 90 min
 inline EqamaCache eqamaCache = {{-1, -1, -1, -1, -1, -1, -1}, -1};
 
 inline int8_t hijriLastDay = -1;

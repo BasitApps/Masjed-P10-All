@@ -556,14 +556,24 @@ Fajr, Maghrib, and Isha on the library's `Custom` slot. The vendored header
 does not declare its existing minute setters, so the firmware provides narrow
 forward declarations without modifying `lib/PrayerTimes`. Standard mappings are
 Egypt 19.5°/17.5°, MWL 18°/17°, Karachi 18°/18°, Custom 18°/17.5°, and Makkah
-18.5° Fajr plus 90 minutes after Maghrib. Maghrib is sunset plus zero minutes
-for these mappings.
+18.5° Fajr with a compatibility baseline of 17° Isha. Maghrib is sunset plus
+zero minutes for these mappings. Makkah's fixed-90-minute option is documented
+in D45.
 
 The previous code selected a method and then called Fajr/Isha setters, which
 forced `Custom`; it also left Maghrib mode/value implicit in zero-initialized
 library state. Native tests cover the method table. Numeric reference cases and
 the product meaning of Makkah/eqama settings remain in
 `docs/PRAYER_TIME_SPEC.md` pending independent/local timetable verification.
+
+## D45 — Make Makkah Isha rule selectable without changing EEPROM layout (2026-10-01)
+
+Keep the existing 452-byte `Configuration` and `EEPROM_VERSION=6`. Store one
+validated mode byte plus a compact CRC in the four-byte gap between `ConfigMeta`
+and card preferences at offset 460. Mode `0` means the selected calculation
+method (default for compatibility); mode `1` means 90 minutes after Maghrib when
+`cm=1`. Expose it only as optional `makkahIsha` in v2 get/set responses so old
+CSV clients and seven-segment firmware remain unchanged.
 
 ## D44 — Normalize Iqama countdown distance across midnight (2026-10-01)
 

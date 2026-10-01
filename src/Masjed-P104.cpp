@@ -205,8 +205,17 @@ struct CardPrefsStorage
   uint32_t crc;
 };
 
+struct PrayerPrefsStorage
+{
+  uint8_t magic;
+  uint8_t makkahIshaMode;
+  uint16_t crc;
+};
+
 static const uint32_t CONFIG_META_MAGIC = 0x42534333UL; // "BSC3"
 static const uint32_t CARD_PREFS_MAGIC = 0x42534350UL; // "BSCP"
+static const uint8_t PRAYER_PREFS_MAGIC = 0xA7;
+static constexpr size_t PRAYER_PREFS_OFFSET = sizeof(Configuration) + sizeof(ConfigMeta);
 static constexpr size_t CARD_PREFS_OFFSET = 464;
 static_assert(sizeof(Configuration) + sizeof(ConfigMeta) <= 512,
               "Configuration exceeds EEPROM allocation");
@@ -217,6 +226,9 @@ static_assert(offsetof(Configuration, digitStyle) == 448,
               "v4 migration requires the original 448-byte prefix");
 static_assert(sizeof(Configuration) == 452,
               "Card preferences offset assumes the existing 452-byte config");
+static_assert(sizeof(PrayerPrefsStorage) == 4 &&
+                  PRAYER_PREFS_OFFSET + sizeof(PrayerPrefsStorage) == CARD_PREFS_OFFSET,
+              "Prayer preference sidecar must fit the EEPROM gap");
 uint32_t bytesCrc32(const uint8_t *bytes, size_t size)
 {
   uint32_t crc = 0xFFFFFFFFUL;
@@ -231,6 +243,45 @@ uint32_t bytesCrc32(const uint8_t *bytes, size_t size)
 uint32_t configCrc32(const Configuration &source, size_t size = sizeof(Configuration))
 {
   return bytesCrc32(reinterpret_cast<const uint8_t *>(&source), size);
+}
+
+uint16_t prayerPrefsCrc(uint8_t mode)
+{
+  uint16_t crc = 0xFFFF;
+  crc ^= mode;
+  for (uint8_t bit = 0; bit < 8; ++bit)
+    crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : (crc >> 1);
+  return crc;
+}
+
+bool savePrayerPrefs(uint8_t mode)
+{
+  if (!validMakkahIshaMode(mode))
+    return false;
+  PrayerPrefsStorage storage = {PRAYER_PREFS_MAGIC, mode, prayerPrefsCrc(mode)};
+  const uint8_t *bytes = reinterpret_cast<const uint8_t *>(&storage);
+  for (size_t i = 0; i < sizeof(storage); ++i)
+    if (EEPROM.read(PRAYER_PREFS_OFFSET + i) != bytes[i])
+    {
+      EEPROM.put(PRAYER_PREFS_OFFSET, storage);
+      return EEPROM.commit();
+    }
+  return true;
+}
+
+bool loadPrayerPrefs()
+{
+  PrayerPrefsStorage storage;
+  EEPROM.get(PRAYER_PREFS_OFFSET, storage);
+  if (storage.magic != PRAYER_PREFS_MAGIC ||
+      !validMakkahIshaMode(storage.makkahIshaMode) ||
+      storage.crc != prayerPrefsCrc(storage.makkahIshaMode))
+  {
+    makkahIshaMode = 0;
+    return false;
+  }
+  makkahIshaMode = storage.makkahIshaMode;
+  return true;
 }
 
 uint32_t cardPrefsCrc(uint16_t mask, const uint8_t order[CARD_COUNT])
@@ -385,6 +436,8 @@ void resetConfig()
   safeCopy(config.masjedName, "0", sizeof(config.masjedName));
   safeCopy(config.message, "0", sizeof(config.message));
   saveConfig();
+  makkahIshaMode = 0;
+  savePrayerPrefs(makkahIshaMode);
   resetCardPrefsRuntime();
   saveCardPrefs();
 }
@@ -438,7 +491,8 @@ void calcPrayers()
 
   set_high_lats_adjust_method(AngleBased);
 
-  const PrayerMethodConfig method = prayerMethodConfig(config.calcMethod);
+  const PrayerMethodConfig method =
+      prayerMethodConfigForMode(config.calcMethod, makkahIshaMode);
   // The library's setters intentionally select Custom. Configure all three
   // twilight rules explicitly so no stale or zero-initialized field survives.
   set_fajr_angle(method.fajrAngle);
@@ -1697,6 +1751,16 @@ bool installConfig(const Configuration &next, bool refreshDisplay)
   return true;
 }
 
+bool installSettings(const Configuration &next, uint8_t nextMakkahIshaMode)
+{
+  if (!next.isValid() || !validMakkahIshaMode(nextMakkahIshaMode) ||
+      !saveConfig(next) || !savePrayerPrefs(nextMakkahIshaMode))
+    return false;
+  config = next;
+  makkahIshaMode = nextMakkahIshaMode;
+  return true;
+}
+
 void refreshAfterConfigChange()
 {
   invalidateCaches(prayerCache, hijriLastDay);
@@ -1798,7 +1862,9 @@ void handleGetData()
         config.powerSaveAfterIsha, config.powerSaveBeforeFajr, config.city);
     safeCopy(out, buf, sizeof(out));
     if (!appendV2Field(out, sizeof(out), "hour24", config.hour24 ? "1" : "0") ||
-        !appendV2Field(out, sizeof(out), "digits", config.digitStyle ? "1" : "0"))
+        !appendV2Field(out, sizeof(out), "digits", config.digitStyle ? "1" : "0") ||
+        !appendV2Field(out, sizeof(out), "makkahIsha",
+                       makkahIshaMode ? "1" : "0"))
     {
       sendV2Error(500, "response_too_large");
       return;
@@ -1953,6 +2019,7 @@ void handleSetLocation()
 void handleSetSettings()
 {
   Configuration next = config;
+  uint8_t nextMakkahIshaMode = makkahIshaMode;
   if (!readIntArg("cm", next.calcMethod, 0, 4) ||
       !readIntArg("wm", next.wayMethod, 0, 1) ||
       !readIntArg("spt", next.sleepPrayerTime, 0, 120) ||
@@ -1962,12 +2029,20 @@ void handleSetSettings()
       !readIntArg("psbf", next.powerSaveBeforeFajr, 0, 720) ||
       !readIntArg("digits", next.digitStyle, 0, 1) ||
       !readIntArg("hour24", next.hour24, 0, 1) ||
-      !readIntArg("lang", next.language, LANG_AR, LANG_EN))
+      !readIntArg("lang", next.language, LANG_AR, LANG_EN) ||
+      !readIntArg("makkahIsha", nextMakkahIshaMode, 0, 1))
   {
     respond("Error");
     return;
   }
-  saveRespond(next, "settingsOk", true);
+  if (!installSettings(next, nextMakkahIshaMode))
+  {
+    respond("Error");
+    return;
+  }
+  applySettings();
+  refreshAfterConfigChange();
+  respond("settingsOk");
 }
 void handleSetMessage()
 {
@@ -2532,6 +2607,7 @@ void setup()
     DBGLN(F("No config, using defaults"));
     resetConfig();
   }
+  loadPrayerPrefs();
   loadCardPrefs();
   dispState.cardNum = CardScheduler::firstIndex(cardOrder, cardEnabledMask) + 1;
   pinMode(FACTORY_RESET_PIN, INPUT_PULLUP);
