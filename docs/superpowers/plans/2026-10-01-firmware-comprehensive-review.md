@@ -236,14 +236,14 @@ git diff --check
 |---|---|---|
 | إنشاء خطة وتسليم سياق | [x] | 2026-10-01: هذا الملف وروابط الاستئناف؛ تغييرات توثيق فقط |
 | R0 خط الأساس والجرد | [x] | 2026-10-01: baseline في ledger و`r0-baseline.txt`؛ لا كود تغير |
-| R1 مواصفة الصلاة والإقامة | [~] | `docs/PRAYER_TIME_SPEC.md` و`docs/PRAYER_REFERENCE_CASES.csv`؛ الأرقام والقرارات المحلية معلقة |
-| R2 الحساب والكاش | [~] | 2026-10-01: explicit table + selectable Makkah rule + full-date prayer cache key; numeric reference comparison remains |
+| R1 مواصفة الصلاة والإقامة | [~] | `docs/PRAYER_TIME_SPEC.md` و`docs/PRAYER_REFERENCE_CASES.csv`؛ حالات fixed-date موثقة، واعتماد جدول المسجد المحلي ما زال مطلوبًا |
+| R2 الحساب والكاش | [~] | 2026-10-01: explicit table + selectable Makkah rule + full-date prayer cache key؛ parity رقمي بين المسارين مثبت لأربع حالات، والمرجع المحلي النهائي متبقٍ |
 | R3 الوقت وDST/RTC/التقويم | [~] | 2026-10-01: full-date caches, bounded second-tick catch-up, and shared seasonal date rule; RTC hardware cases remain |
 | R4 نوافذ الصلاة والإقامة | [~] | 2026-10-01: cross-midnight countdown and centralized phase classifier; 0..120/Friday/Sunrise hardware boundaries remain |
 | R5 تدقيق الذاكرة والبساطة | [~] | 2026-10-01: bounded malformed UTF-8 lookahead; dynamic String uses remain cold HTTP/boot paths; heap soak remains |
 | R6 loop والعرض والشبكة | [~] | 2026-10-01: loop catches up up to 60 elapsed seconds; hardware max-loop/OTA cases remain |
 | R7 الحفظ وAPI/OTA | [~] | 2026-10-01: strict OTA version/size parsing added; save/OTA fault matrix remains |
-| R8 المقارنة والتسليم | [~] | 2026-10-01: P10 و7-segment موحدان في الفهرس والطرق ومكة وDST؛ fixed-date/RTC/hardware comparison remains |
+| R8 المقارنة والتسليم | [~] | 2026-10-01: P10 و7-segment موحدان في الفهرس والطرق ومكة وDST؛ fixed-date parity نجح، وRTC/hardware remains |
 
 قالب كل جلسة، أضفه أسفل الملف:
 
@@ -280,6 +280,7 @@ commit الدفعة (إن وُجد):
 `R4-001 | P1 | src/Masjed-P104.cpp:checkPrayers | بعد منتصف الليل كان عداد الإقامة يستخدم طرحًا خامًا رغم أن نافذة الحدث تعبر 1440 | قد تظهر قيمة أكبر من 1440 بدل الدقائق المتبقية | اختبار forward distance عبر منتصف الليل فشل قبل helper | أضيفت `forwardMinuteDistance()` واستخدمت في النص فقط مع إبقاء النافذة كما هي | `test_time_math` 5/5، native 25/25، release profiles 4/4 | resolved in working tree; event semantics still need hardware/reference cases`.
 `R8-001 | P1 | P10:globals.h + Masjed_TA_All_v2/src/Masjed_TA.cpp:Checking | P10 و7-segment كانا يربطان أحداث المغرب بفهرس مختلف عن فهرس المكتبة | Sunset كان يمكن أن يظهر كمغرب أو تُهمل قيمة Maghrib الحقيقية | قراءة PrayerTimes.h ومقارنة مساري العرض والإقامة | قائمة الأحداث أصبحت `{0,1,2,3,5,6}` في P10 و7-segment؛ 7-segment في `8996bab` وP10 في الدفعة الحالية | P10 native 28/28 + release 4/4، 7-segment ta73/ta73s 2/2؛ fixed-date numeric and hardware reference pending | resolved in both repositories; verification pending`.
 `R5-001 | P1 | src/ArabicShaper.cpp:nextCp | malformed/truncated UTF-8 could inspect bytes past the NUL terminator and emit multiple replacements | API text could invoke undefined lookahead and noisy output | new truncated-sequence test failed before the fix (`'??'` vs `'?'`) | check continuation bytes before lookahead and consume one malformed sequence | shaper 11/11, native 27/27, release profiles 4/4 (RAM 37408/37428/37524/37544; Flash 426655/426795/427995/428135) | resolved; heap/long-message soak remains`.
+`R2-004 | P1 | P10/7-segment PrayerTimes contract | نفس التاريخ/الموقع كان معرضًا لاختلاف فهرس أو طريقة بين مساري العرض | وقت صلاة غير متطابق أو مغرب محسوب من Sunset | host harness شغّل نسختي المكتبة بنفس معاملات Cairo/Makkah/Karachi؛ النتائج السبع متطابقة، وCSV المرجعي حُدّث بالدقائق المقربة | أربع حالات، منها مكة angle وfixed-90، parity كامل؛ مرجع المسجد المحلي واختبار RTC/العتاد متبقيان | resolved for cross-firmware parity; external reference pending`.
 
 ## 9. تعليمات الاستئناف المختصرة
 
