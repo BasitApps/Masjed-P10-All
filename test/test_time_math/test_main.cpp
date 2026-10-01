@@ -74,11 +74,22 @@ void test_prayer_phase_boundaries()
   TEST_ASSERT_EQUAL(PrayerPhase::Azan, prayerPhase(1, 1, 5));
 }
 
+void test_prayer_phase_zero_and_max_eqama()
+{
+  TEST_ASSERT_EQUAL(PrayerPhase::PreAzan, prayerPhase(-1, 0, 5));
+  TEST_ASSERT_EQUAL(PrayerPhase::Azan, prayerPhase(0, 0, 5));
+  TEST_ASSERT_EQUAL(PrayerPhase::Outside, prayerPhase(2, 0, 5));
+  TEST_ASSERT_EQUAL(PrayerPhase::EqamaCountdown, prayerPhase(118, 120, 5));
+  TEST_ASSERT_EQUAL(PrayerPhase::EqamaSeconds, prayerPhase(119, 120, 5));
+  TEST_ASSERT_EQUAL(PrayerPhase::Eqama, prayerPhase(120, 120, 5));
+}
+
 void test_prayer_indices_keep_sunset_separate_from_maghrib()
 {
   TEST_ASSERT_EQUAL_UINT8(4, PrayerIndex::Sunset);
   TEST_ASSERT_EQUAL_UINT8(5, PrayerIndex::Maghrib);
   TEST_ASSERT_EQUAL_UINT8(5, PrayerIndex::EventIndices[4]);
+  TEST_ASSERT_EQUAL_UINT8(6, PrayerIndex::EventIndices[5]);
 }
 
 void test_dst_contract_boundaries()
@@ -100,6 +111,7 @@ int main(int, char **)
   RUN_TEST(test_calendar_date_key_includes_month_and_year);
   RUN_TEST(test_consume_second_ticks_catches_up_without_jumping_forever);
   RUN_TEST(test_prayer_phase_boundaries);
+  RUN_TEST(test_prayer_phase_zero_and_max_eqama);
   RUN_TEST(test_prayer_indices_keep_sunset_separate_from_maghrib);
   RUN_TEST(test_dst_contract_boundaries);
   return UNITY_END();

@@ -42,6 +42,8 @@ inline PrayerPhase prayerPhase(int16_t since, int16_t eqama, int16_t sleep)
     return PrayerPhase::PreAzan;
   if (since >= 0 && since <= 1)
     return PrayerPhase::Azan;
+  if (eqama <= 0)
+    return PrayerPhase::Outside;
   if (since >= 2 && since < eqama - 1)
     return PrayerPhase::EqamaCountdown;
   if (since == eqama - 1)
