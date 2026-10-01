@@ -582,6 +582,13 @@ This prevents a stale prayer schedule when the RTC crosses a month/year boundary
 with the same numeric day. The fields are runtime RAM only and do not affect
 EEPROM layout or the public API.
 
+## D47 — Reject malformed OTA numeric metadata (2026-10-01)
+
+The v2 OTA manifest now parses `version` and `size` with the existing strict
+decimal parser instead of `strtoul`, which previously accepted trailing junk
+such as `123abc`. This is a validation-only change; the signed/hash and profile
+checks remain unchanged.
+
 ## D44 — Normalize Iqama countdown distance across midnight (2026-10-01)
 
 Use `forwardMinuteDistance()` for the displayed minutes remaining until Iqama.

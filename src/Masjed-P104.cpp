@@ -2244,11 +2244,13 @@ bool authorizeOtaV2()
   String hash = server.arg("sha256");
   char expectedProfile[12];
   snprintf(expectedProfile, sizeof(expectedProfile), "%ux1", DISPLAYS_WIDE);
-  char *end = nullptr;
-  unsigned long parsedVersion = strtoul(version.c_str(), &end, 10);
-  unsigned long parsedSize = strtoul(size.c_str(), &end, 10);
-  if (profile != expectedProfile || !parsedVersion || !parsedSize ||
-      parsedSize > (ESP.getFreeSketchSpace() - 0x1000) ||
+  long parsedVersion = 0;
+  long parsedSize = 0;
+  if (profile != expectedProfile ||
+      !parseLongValue(version.c_str(), 1, LONG_MAX, parsedVersion) ||
+      !parseLongValue(size.c_str(), 1, LONG_MAX, parsedSize) ||
+      static_cast<unsigned long>(parsedSize) >
+          (ESP.getFreeSketchSpace() - 0x1000) ||
       !validHexSha256(hash.c_str()))
   {
     otaFail("manifest");
