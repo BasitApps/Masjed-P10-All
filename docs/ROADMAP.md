@@ -34,6 +34,11 @@ match in both firmware paths; P10 correction is in the current branch and the
 7-segment correction is commit `8996bab`. Fixed-date, DST/RTC, and hardware
 checks remain before release.
 
+The separate 7-segment path now uses the same tested prayer-phase boundaries,
+cross-midnight minute helpers, and Gregorian-to-Hijri conversion as P10;
+`ta73`/`ta73s` builds pass. The source still contains owner working-tree
+changes and no firmware upload was performed.
+
 Previous step: 2026-09-30: card text review. Corrected Hijri date logical
 order for the RTL shaper in both the rotating small-font info line and the
 Hijri card used on narrow panels, and standardized the large Gregorian card
