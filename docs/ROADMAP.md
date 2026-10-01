@@ -10,8 +10,9 @@ code simplicity/performance review plan, including its progress log, is
 `docs/superpowers/plans/2026-10-01-firmware-comprehensive-review.md`.
 R0/R1 documentation is complete/partial and R2 has its first calculation fix:
 PrayerTimes method parameters are now explicit, including Makkah Isha 90 minutes.
-Native tests are 21/21 and all four release profiles build; independent numeric
-reference and owner hardware checks remain.
+R4 also normalizes the Iqama countdown across midnight. Native tests are 22/22
+and all four release profiles build; independent numeric reference and owner
+hardware checks remain.
 `firmware-rc1` remains the rollback reference; its four-profile SHA-256 manifest
 is stored under `release/firmware-rc1/`. Commercial release is not yet authorized.
 

@@ -236,7 +236,7 @@ git diff --check
 | R1 مواصفة الصلاة والإقامة | [~] | `docs/PRAYER_TIME_SPEC.md` و`docs/PRAYER_REFERENCE_CASES.csv`؛ الأرقام والقرارات المحلية معلقة |
 | R2 الحساب والكاش | [~] | 2026-10-01: explicit method table/setters added; numeric reference comparison remains |
 | R3 الوقت وDST/RTC/التقويم | [ ] | حدود الانتقال والقفز والتعافي |
-| R4 نوافذ الصلاة والإقامة | [ ] | 0..120 والجمعة والشروق ومنتصف الليل |
+| R4 نوافذ الصلاة والإقامة | [~] | 2026-10-01: cross-midnight countdown fixed; 0..120/Friday/Sunrise boundaries remain |
 | R5 تدقيق الذاكرة والبساطة | [ ] | جرد لكل ملفات المشروع وقياس قبل/بعد |
 | R6 loop والعرض والشبكة | [ ] | قياس الحجب والـrollover والأولوية |
 | R7 الحفظ وAPI/OTA | [ ] | تحقق وترحيل وتوافق الأجهزة القديمة |
