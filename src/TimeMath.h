@@ -16,6 +16,16 @@ inline int16_t signedMinuteDelta(int16_t nowMins, int16_t eventMins)
   return delta;
 }
 
+inline int16_t forwardMinuteDistance(int16_t nowMins, int16_t targetMins)
+{
+  int16_t delta = targetMins - nowMins;
+  while (delta < 0)
+    delta += 1440;
+  while (delta >= 1440)
+    delta -= 1440;
+  return delta;
+}
+
 inline bool minuteInWindow(int16_t nowMins, int16_t startMins, int16_t endMins)
 {
   const int16_t span = endMins - startMins;

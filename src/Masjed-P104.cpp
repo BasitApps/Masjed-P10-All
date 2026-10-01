@@ -1030,7 +1030,7 @@ void checkPrayers(unsigned long now, int16_t nowMins)
       dispState.setStopCards(true);
       snprintf_P(dispState.runText, sizeof(dispState.runText),
                  english ? MSG_EQAMA_IN_EN : MSG_EQAMA_IN,
-                 (pt + eq) - nowMins);
+                 forwardMinuteDistance(nowMins, pt + eq));
       safeCopyP(dispState.tempBuf, english ? MSG_EQAMA_EN : MSG_EQAMA,
                 sizeof(dispState.tempBuf));
       displayText(dispState.runText, dispState.tempBuf, false, true, now);

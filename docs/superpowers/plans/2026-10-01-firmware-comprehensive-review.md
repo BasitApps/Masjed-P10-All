@@ -269,6 +269,7 @@ commit الدفعة (إن وُجد):
 - لا refactor شامل لمجرد حجم الملف؛ التغييرات الصغيرة القابلة للإثبات هي الافتراضية.
 
 `R2-001 | P1 | src/Masjed-P104.cpp:calcPrayers | كل اختيار طريقة كان يستدعي Fajr/Isha setters التي تختار Custom، وMaghrib تركته الحالة الافتراضية غير المهيأة | إعدادات الطرق لم تكن صريحة؛ طريقة مكة لم تكن 90 دقيقة | الدليل: PrayerTimes.h/cpp ووقت البناء | أضيفت src/PrayerMethodConfig.h، وضُبطت قواعد Fajr/Maghrib/Isha صراحةً، وأضيفت forward declarations للـminute setters دون تعديل المكتبة | test_prayer_method_config 2/2، native 21/21، release profiles 4/4 | resolved in working tree, awaiting independent/local numeric reference and owner hardware check`.
+`R4-001 | P1 | src/Masjed-P104.cpp:checkPrayers | بعد منتصف الليل كان عداد الإقامة يستخدم طرحًا خامًا رغم أن نافذة الحدث تعبر 1440 | قد تظهر قيمة أكبر من 1440 بدل الدقائق المتبقية | اختبار forward distance عبر منتصف الليل فشل قبل helper | أضيفت `forwardMinuteDistance()` واستخدمت في النص فقط مع إبقاء النافذة كما هي | `test_time_math` 5/5، native 22/22، release profiles 4/4 | resolved in working tree; event semantics still need hardware/reference cases`.
 
 ## 9. تعليمات الاستئناف المختصرة
 

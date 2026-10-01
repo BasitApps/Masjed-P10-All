@@ -18,6 +18,13 @@ void test_window_can_cross_midnight()
   TEST_ASSERT_FALSE(minuteInWindow(20, 1437, 1450));
 }
 
+void test_forward_minute_distance_wraps_target()
+{
+  TEST_ASSERT_EQUAL_INT16(3, forwardMinuteDistance(2, 1439 + 6));
+  TEST_ASSERT_EQUAL_INT16(2, forwardMinuteDistance(1439, 1));
+  TEST_ASSERT_EQUAL_INT16(0, forwardMinuteDistance(120, 120));
+}
+
 void test_calendar_month_lengths()
 {
   TEST_ASSERT_EQUAL_UINT8(29, daysInMonth(2028, 2));
@@ -38,6 +45,7 @@ int main(int, char **)
   RUN_TEST(test_display_hour);
   RUN_TEST(test_minute_delta_wraps_at_midnight);
   RUN_TEST(test_window_can_cross_midnight);
+  RUN_TEST(test_forward_minute_distance_wraps_target);
   RUN_TEST(test_calendar_month_lengths);
   return UNITY_END();
 }

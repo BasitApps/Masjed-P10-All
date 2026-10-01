@@ -564,3 +564,11 @@ forced `Custom`; it also left Maghrib mode/value implicit in zero-initialized
 library state. Native tests cover the method table. Numeric reference cases and
 the product meaning of Makkah/eqama settings remain in
 `docs/PRAYER_TIME_SPEC.md` pending independent/local timetable verification.
+
+## D44 — Normalize Iqama countdown distance across midnight (2026-10-01)
+
+Use `forwardMinuteDistance()` for the displayed minutes remaining until Iqama.
+The active-window helper already accepts end minutes beyond 1440, but the old
+format argument subtracted raw clock minutes and could display values above one
+day after midnight. The helper keeps the existing window boundaries and only
+normalizes the countdown to 0..1439.
