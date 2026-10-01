@@ -40,6 +40,9 @@ cross-midnight minute helpers, and Gregorian-to-Hijri conversion as P10;
 changes and no firmware upload was performed.
 An edge-case test also fixed the shared contract so iqama `0` disables all
 post-azan phases instead of entering sleep when a sleep duration is configured.
+Live AP verification passed for config/API/display/heap, but the connected P10
+reports `rtc=0`; RTC wiring/module power must be fixed before prayer-window
+hardware verification.
 
 Previous step: 2026-09-30: card text review. Corrected Hijri date logical
 order for the RTL shaper in both the rotating small-font info line and the
