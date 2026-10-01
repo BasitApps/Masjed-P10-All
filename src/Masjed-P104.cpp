@@ -5,6 +5,7 @@
 #include "constants.h"
 #include "globals.h"
 #include "PrayerMethodConfig.h"
+#include "CivilTimeContract.h"
 #include "texts.h"
 #include "OtaPublicKey.h"
 #include <Arduino.h>
@@ -442,22 +443,9 @@ void resetConfig()
   saveCardPrefs();
 }
 
-int dayOfWeek(int y, int m, int d)
-{
-  static const int8_t t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
-  if (m < 3)
-    y -= 1;
-  return (y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7;
-}
 bool isDST(int y, int m, int d)
 {
-  if (m > 4 && m < 10)
-    return true;
-  if (m == 4)
-    return d >= 30 - ((dayOfWeek(y, 4, 30) - 5 + 7) % 7);
-  if (m == 10)
-    return d <= 31 - ((dayOfWeek(y, 10, 31) - 4 + 7) % 7);
-  return false;
+  return CivilTime::isDstDate(y, m, d);
 }
 void calcHijri()
 {

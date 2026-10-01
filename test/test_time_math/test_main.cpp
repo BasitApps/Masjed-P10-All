@@ -1,5 +1,6 @@
 #include <TimeMath.h>
 #include <PrayerIndex.h>
+#include <CivilTimeContract.h>
 #include <unity.h>
 
 void setUp() {}
@@ -79,6 +80,15 @@ void test_prayer_indices_keep_sunset_separate_from_maghrib()
   TEST_ASSERT_EQUAL_UINT8(5, PrayerIndex::Maghrib);
   TEST_ASSERT_EQUAL_UINT8(5, PrayerIndex::EventIndices[4]);
 }
+
+void test_dst_contract_boundaries()
+{
+  TEST_ASSERT_FALSE(CivilTime::isDstDate(2026, 4, 23));
+  TEST_ASSERT_TRUE(CivilTime::isDstDate(2026, 4, 24));
+  TEST_ASSERT_TRUE(CivilTime::isDstDate(2026, 10, 29));
+  TEST_ASSERT_FALSE(CivilTime::isDstDate(2026, 10, 30));
+  TEST_ASSERT_FALSE(CivilTime::isDstDate(2026, 1, 1));
+}
 int main(int, char **)
 {
   UNITY_BEGIN();
@@ -91,5 +101,6 @@ int main(int, char **)
   RUN_TEST(test_consume_second_ticks_catches_up_without_jumping_forever);
   RUN_TEST(test_prayer_phase_boundaries);
   RUN_TEST(test_prayer_indices_keep_sunset_separate_from_maghrib);
+  RUN_TEST(test_dst_contract_boundaries);
   return UNITY_END();
 }
