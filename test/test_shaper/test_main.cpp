@@ -92,6 +92,12 @@ void test_invalid_utf8_becomes_question() {
   TEST_ASSERT_EQUAL_STRING("??", out);
 }
 
+void test_truncated_utf8_sequence_is_one_question() {
+  char out[8];
+  ArabicShaper::shape("\xE2\x82", out, sizeof(out));
+  TEST_ASSERT_EQUAL_STRING("?", out);
+}
+
 void test_preformed_passthrough() {
   // U+FEEA (heh FINAL) = EF BB AA -> its slot directly
   char out[8];
@@ -115,6 +121,7 @@ int main() {
   RUN_TEST(test_buffer_truncation_safe);
   RUN_TEST(test_null_and_empty);
   RUN_TEST(test_invalid_utf8_becomes_question);
+  RUN_TEST(test_truncated_utf8_sequence_is_one_question);
   RUN_TEST(test_preformed_passthrough);
   RUN_TEST(test_indic_digits_keep_numeric_order);
   return UNITY_END();

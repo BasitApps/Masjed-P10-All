@@ -13,6 +13,13 @@ bool isAlefVariant(uint16_t cp) {
   return cp == 0x0627 || cp == 0x0623 || cp == 0x0625 || cp == 0x0622;
 }
 
+bool isContinuation(uint8_t c) { return (c & 0xC0) == 0x80; }
+
+void consumeContinuationBytes(const char *&p) {
+  while (*p && isContinuation(static_cast<uint8_t>(*p)))
+    ++p;
+}
+
 // Decode one UTF-8 codepoint; returns 0xFFFFFFFF on malformed input.
 uint32_t nextCp(const char *&p) {
   uint8_t c = (uint8_t)*p++;
@@ -20,27 +27,49 @@ uint32_t nextCp(const char *&p) {
     return c;
   if ((c & 0xE0) == 0xC0) {
     uint8_t c2 = (uint8_t)*p;
-    if ((c2 & 0xC0) != 0x80)
+    if (!c2 || !isContinuation(c2)) {
+      consumeContinuationBytes(p);
       return 0xFFFFFFFF;
+    }
     ++p;
     return ((uint32_t)(c & 0x1F) << 6) | (c2 & 0x3F);
   }
   if ((c & 0xF0) == 0xE0) {
-    uint8_t c2 = (uint8_t)*p, c3 = (uint8_t)p[1];
-    if ((c2 & 0xC0) != 0x80 || (c3 & 0xC0) != 0x80)
+    uint8_t c2 = (uint8_t)*p;
+    if (!c2 || !isContinuation(c2)) {
+      consumeContinuationBytes(p);
       return 0xFFFFFFFF;
+    }
+    uint8_t c3 = (uint8_t)p[1];
+    if (!c3 || !isContinuation(c3)) {
+      consumeContinuationBytes(p);
+      return 0xFFFFFFFF;
+    }
     p += 2;
     return ((uint32_t)(c & 0x0F) << 12) | ((uint32_t)(c2 & 0x3F) << 6) |
            (c3 & 0x3F);
   }
   if ((c & 0xF8) == 0xF0) {
-    uint8_t c2 = (uint8_t)*p, c3 = (uint8_t)p[1], c4 = (uint8_t)p[2];
-    if ((c2 & 0xC0) != 0x80 || (c3 & 0xC0) != 0x80 || (c4 & 0xC0) != 0x80)
+    uint8_t c2 = (uint8_t)*p;
+    if (!c2 || !isContinuation(c2)) {
+      consumeContinuationBytes(p);
       return 0xFFFFFFFF;
+    }
+    uint8_t c3 = (uint8_t)p[1];
+    if (!c3 || !isContinuation(c3)) {
+      consumeContinuationBytes(p);
+      return 0xFFFFFFFF;
+    }
+    uint8_t c4 = (uint8_t)p[2];
+    if (!c4 || !isContinuation(c4)) {
+      consumeContinuationBytes(p);
+      return 0xFFFFFFFF;
+    }
     p += 3;
     return ((uint32_t)(c & 0x07) << 18) | ((uint32_t)(c2 & 0x3F) << 12) |
            ((uint32_t)(c3 & 0x3F) << 6) | (c4 & 0x3F);
   }
+  consumeContinuationBytes(p);
   return 0xFFFFFFFF;
 }
 

@@ -19,6 +19,8 @@ Gregorian date to avoid stale results at month/year rollover, and short loop
 stalls now catch up bounded software-second ticks.
 Prayer-window boundary predicates are now centralized in a small tested phase
 classifier without changing the existing Friday/eqama behavior.
+Malformed/truncated UTF-8 input is now bounded in the shaper and covered by a
+regression test; valid font output remains unchanged.
 `firmware-rc1` remains the rollback reference; its four-profile SHA-256 manifest
 is stored under `release/firmware-rc1/`. Commercial release is not yet authorized.
 

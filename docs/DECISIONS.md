@@ -622,6 +622,14 @@ do not silently patch either repository until a fixed-date numeric and hardware
 comparison is approved. Legacy P10 API and sold-device compatibility remain
 unchanged.
 
+## D52 — Bound malformed UTF-8 decoding (2026-10-01)
+
+`ArabicShaper` now checks continuation bytes before looking ahead and consumes
+the remaining continuation bytes of one malformed sequence. A truncated UTF-8
+sequence therefore renders as one `?` without reading beyond the NUL-terminated
+input. Valid Arabic, presentation forms, digits, and existing golden vectors
+are unchanged.
+
 ## D44 — Normalize Iqama countdown distance across midnight (2026-10-01)
 
 Use `forwardMinuteDistance()` for the displayed minutes remaining until Iqama.
