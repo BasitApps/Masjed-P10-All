@@ -486,7 +486,10 @@ void calcHijri()
 
 void calcPrayers()
 {
-  if (prayerCache.valid && prayerCache.lastDay == timeData.day)
+  if (prayerCache.valid &&
+      sameCalendarDate(timeData.year, timeData.month, timeData.day,
+                       prayerCache.lastYear, prayerCache.lastMonth,
+                       prayerCache.lastDay))
     return;
 
   set_high_lats_adjust_method(AngleBased);
@@ -522,6 +525,8 @@ void calcPrayers()
     get_float_time_parts(times[i], h, m);
     prayerCache.times[i] = h * 60 + m;
   }
+  prayerCache.lastYear = timeData.year;
+  prayerCache.lastMonth = timeData.month;
   prayerCache.lastDay = timeData.day;
   prayerCache.valid = true;
   prayerCache.activeStart = prayerCache.activeEnd = INT16_MIN;

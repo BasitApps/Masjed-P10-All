@@ -6,6 +6,13 @@ inline uint8_t displayHour(uint8_t hour, bool use24) {
   return use24 ? hour : (hour % 12 ? hour % 12 : 12);
 }
 
+inline bool sameCalendarDate(int16_t year, int8_t month, int8_t day,
+                             int16_t cachedYear, int8_t cachedMonth,
+                             int8_t cachedDay)
+{
+  return year == cachedYear && month == cachedMonth && day == cachedDay;
+}
+
 inline int16_t signedMinuteDelta(int16_t nowMins, int16_t eventMins)
 {
   int16_t delta = nowMins - eventMins;

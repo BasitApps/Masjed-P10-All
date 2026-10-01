@@ -575,6 +575,13 @@ method (default for compatibility); mode `1` means 90 minutes after Maghrib when
 `cm=1`. Expose it only as optional `makkahIsha` in v2 get/set responses so old
 CSV clients and seven-segment firmware remain unchanged.
 
+## D46 — Key the prayer cache by the complete Gregorian date (2026-10-01)
+
+`PrayerCache` now stores year, month, and day instead of only the day number.
+This prevents a stale prayer schedule when the RTC crosses a month/year boundary
+with the same numeric day. The fields are runtime RAM only and do not affect
+EEPROM layout or the public API.
+
 ## D44 — Normalize Iqama countdown distance across midnight (2026-10-01)
 
 Use `forwardMinuteDistance()` for the displayed minutes remaining until Iqama.

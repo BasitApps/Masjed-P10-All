@@ -39,6 +39,13 @@ void test_display_hour()
     TEST_ASSERT_EQUAL_UINT8(h%12?h%12:12,displayHour(h,false));
   }
 }
+
+void test_calendar_date_key_includes_month_and_year()
+{
+  TEST_ASSERT_TRUE(sameCalendarDate(2026, 9, 30, 2026, 9, 30));
+  TEST_ASSERT_FALSE(sameCalendarDate(2026, 10, 30, 2026, 9, 30));
+  TEST_ASSERT_FALSE(sameCalendarDate(2027, 9, 30, 2026, 9, 30));
+}
 int main(int, char **)
 {
   UNITY_BEGIN();
@@ -47,5 +54,6 @@ int main(int, char **)
   RUN_TEST(test_window_can_cross_midnight);
   RUN_TEST(test_forward_minute_distance_wraps_target);
   RUN_TEST(test_calendar_month_lengths);
+  RUN_TEST(test_calendar_date_key_includes_month_and_year);
   return UNITY_END();
 }

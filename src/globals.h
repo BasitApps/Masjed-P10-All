@@ -17,6 +17,8 @@ struct PrayerCache {
   int16_t times[7];
   int16_t activeStart; // Start minute for active prayer window
   int16_t activeEnd;   // End minute for active prayer window
+  int16_t lastYear;
+  int8_t lastMonth;
   int8_t lastDay;
   bool valid;
 };
@@ -156,6 +158,8 @@ struct Configuration {
 // ============ Helper Functions ============
 inline void invalidateCaches(PrayerCache &p, int8_t &hijriDay) {
   p.valid = false;
+  p.lastYear = -1;
+  p.lastMonth = -1;
   p.lastDay = -1;
   p.activeStart = p.activeEnd = INT16_MIN;
   hijriDay = -1;
@@ -183,7 +187,7 @@ struct EqamaCache {
 
 // ============ Global Variable Definitions ============
 // Note: These use 'inline' (C++17) to avoid multiple definition errors
-inline PrayerCache prayerCache = {{0}, INT16_MIN, INT16_MIN, -1, false};
+inline PrayerCache prayerCache = {{0}, INT16_MIN, INT16_MIN, -1, -1, -1, false};
 inline SystemFlags sysFlags = {0x02, 0};
 inline DisplayState dispState = {{0}, {0}, 0, 50, 1, 0x01};
 inline TimeData timeData = {0, 1400, 0, 0, 0, 0, 0, 0, 1, 1};
