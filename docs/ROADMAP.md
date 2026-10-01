@@ -38,6 +38,8 @@ The separate 7-segment path now uses the same tested prayer-phase boundaries,
 cross-midnight minute helpers, and Gregorian-to-Hijri conversion as P10;
 `ta73`/`ta73s` builds pass. The source still contains owner working-tree
 changes and no firmware upload was performed.
+An edge-case test also fixed the shared contract so iqama `0` disables all
+post-azan phases instead of entering sleep when a sleep duration is configured.
 
 Previous step: 2026-09-30: card text review. Corrected Hijri date logical
 order for the RTL shaper in both the rotating small-font info line and the
