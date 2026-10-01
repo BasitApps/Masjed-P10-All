@@ -2655,6 +2655,7 @@ void setup()
   }
 
   updatePrayerWindow(timeData.hour * 60 + timeData.min);
+  lastSecondMs = millis();
 
   ESP.wdtEnable(WDTO_8S);
   DBGLN(F("Setup done"));
@@ -2732,10 +2733,11 @@ void loop()
 
   // Second tick - update time and prayer window
   static int16_t cachedNowMins = -1;
-  if (now - lastSecondMs >= MS_SECOND)
+  const uint8_t secondTicks = consumeSecondTicks(now, lastSecondMs);
+  if (secondTicks)
   {
-    lastSecondMs = now;
-    tickSecond();
+    for (uint8_t tick = 0; tick < secondTicks; ++tick)
+      tickSecond();
     cachedNowMins = timeData.hour * 60 + timeData.min;
 
     // Update prayer window once per minute

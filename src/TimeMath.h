@@ -13,6 +13,17 @@ inline bool sameCalendarDate(int16_t year, int8_t month, int8_t day,
   return year == cachedYear && month == cachedMonth && day == cachedDay;
 }
 
+inline uint8_t consumeSecondTicks(uint32_t nowMs, uint32_t &lastMs,
+                                   uint8_t maxTicks = 60)
+{
+  const uint32_t due = (nowMs - lastMs) / 1000UL;
+  if (due == 0)
+    return 0;
+  const uint32_t ticks = due > maxTicks ? maxTicks : due;
+  lastMs += ticks * 1000UL;
+  return static_cast<uint8_t>(ticks);
+}
+
 inline int16_t signedMinuteDelta(int16_t nowMins, int16_t eventMins)
 {
   int16_t delta = nowMins - eventMins;

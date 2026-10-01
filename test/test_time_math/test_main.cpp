@@ -46,6 +46,17 @@ void test_calendar_date_key_includes_month_and_year()
   TEST_ASSERT_FALSE(sameCalendarDate(2026, 10, 30, 2026, 9, 30));
   TEST_ASSERT_FALSE(sameCalendarDate(2027, 9, 30, 2026, 9, 30));
 }
+
+void test_consume_second_ticks_catches_up_without_jumping_forever()
+{
+  uint32_t last = 1000;
+  TEST_ASSERT_EQUAL_UINT8(0, consumeSecondTicks(1999, last));
+  TEST_ASSERT_EQUAL_UINT32(1000, last);
+  TEST_ASSERT_EQUAL_UINT8(3, consumeSecondTicks(4000, last));
+  TEST_ASSERT_EQUAL_UINT32(4000, last);
+  TEST_ASSERT_EQUAL_UINT8(5, consumeSecondTicks(20000, last, 5));
+  TEST_ASSERT_EQUAL_UINT32(9000, last);
+}
 int main(int, char **)
 {
   UNITY_BEGIN();
@@ -55,5 +66,6 @@ int main(int, char **)
   RUN_TEST(test_forward_minute_distance_wraps_target);
   RUN_TEST(test_calendar_month_lengths);
   RUN_TEST(test_calendar_date_key_includes_month_and_year);
+  RUN_TEST(test_consume_second_ticks_catches_up_without_jumping_forever);
   return UNITY_END();
 }

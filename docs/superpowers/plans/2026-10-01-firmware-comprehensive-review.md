@@ -238,10 +238,10 @@ git diff --check
 | R0 خط الأساس والجرد | [x] | 2026-10-01: baseline في ledger و`r0-baseline.txt`؛ لا كود تغير |
 | R1 مواصفة الصلاة والإقامة | [~] | `docs/PRAYER_TIME_SPEC.md` و`docs/PRAYER_REFERENCE_CASES.csv`؛ الأرقام والقرارات المحلية معلقة |
 | R2 الحساب والكاش | [~] | 2026-10-01: explicit table + selectable Makkah rule + full-date prayer cache key; numeric reference comparison remains |
-| R3 الوقت وDST/RTC/التقويم | [ ] | حدود الانتقال والقفز والتعافي |
+| R3 الوقت وDST/RTC/التقويم | [~] | 2026-10-01: full-date caches and bounded second-tick catch-up; DST/RTC hardware cases remain |
 | R4 نوافذ الصلاة والإقامة | [~] | 2026-10-01: cross-midnight countdown fixed; 0..120/Friday/Sunrise boundaries remain |
 | R5 تدقيق الذاكرة والبساطة | [ ] | جرد لكل ملفات المشروع وقياس قبل/بعد |
-| R6 loop والعرض والشبكة | [ ] | قياس الحجب والـrollover والأولوية |
+| R6 loop والعرض والشبكة | [~] | 2026-10-01: loop catches up up to 60 elapsed seconds; hardware max-loop/OTA cases remain |
 | R7 الحفظ وAPI/OTA | [~] | 2026-10-01: strict OTA version/size parsing added; save/OTA fault matrix remains |
 | R8 المقارنة والتسليم | [ ] | 7-segment ومقاسات P10 وتجربة المالك |
 
@@ -275,6 +275,7 @@ commit الدفعة (إن وُجد):
 `R2-002 | P1 | src/Masjed-P104.cpp:calcPrayers + EEPROM sidecar | طريقة مكة تحتاج قرار 90 دقيقة ثابتة أو قاعدة الطريقة دون كسر الأجهزة القديمة | غياب خيار محفوظ في العقد السابق | sidecar offset 460 يحفظ mode 0/1، وv2 يقرأ/يكتب `makkahIsha` اختيارياً؛ CSV القديم لم يتغير | native method-mode tests 3/3 + release build; Android deferred in docs/ANDROID_DEFERRED_PLAN.md | resolved in working tree; Android UI and local numeric reference remain deferred`.
 `R2-003 | P1 | src/Masjed-P104.cpp:calcPrayers/calcHijri | صلاحية الكاش كانت تعتمد على رقم اليوم فقط | نفس اليوم الرقمي في شهر/سنة جديدة كان يعيد مواقيت الصلاة/الهجري السابقة | أضيف مفتاح year/month/day runtime لكلا الكاشين مع اختبار sameCalendarDate | test_time_math 6/6، native 24/24، release profiles 4/4 (RAM 37408/37428/37524/37544; Flash 426559/426699/427899/428055) | resolved in working tree; hardware/reference checks remain`.
 `R7-001 | P1 | src/Masjed-P104.cpp:authorizeOtaV2 | `strtoul` accepted trailing characters in version/size | malformed manifest metadata could be partially accepted | reuse strict `parseLongValue` with positive bounds | native 24/24; release profiles 4/4 (RAM 37404/37424/37520/37540; Flash 426475/426615/427815/427971) | resolved in working tree; hardware/network OTA checks remain`.
+`R3-001 | P1 | src/Masjed-P104.cpp:loop/tickSecond | deadline was reset to `now` after a stall | 2–5 seconds of blocking work silently lost software-clock seconds | consume elapsed whole-second ticks with a 60-tick bound; RTC remains authority | test_time_math 7/7, native 25/25, release profiles 4/4 (RAM 37408/37428/37524/37544; Flash 426623/426763/427963/428119) | resolved in working tree; real blocking/RTC correction cases remain`.
 `R4-001 | P1 | src/Masjed-P104.cpp:checkPrayers | بعد منتصف الليل كان عداد الإقامة يستخدم طرحًا خامًا رغم أن نافذة الحدث تعبر 1440 | قد تظهر قيمة أكبر من 1440 بدل الدقائق المتبقية | اختبار forward distance عبر منتصف الليل فشل قبل helper | أضيفت `forwardMinuteDistance()` واستخدمت في النص فقط مع إبقاء النافذة كما هي | `test_time_math` 5/5، native 22/22، release profiles 4/4 | resolved in working tree; event semantics still need hardware/reference cases`.
 
 ## 9. تعليمات الاستئناف المختصرة

@@ -596,6 +596,14 @@ avoids retaining the previous converted date when only the Gregorian month or
 year changes while the day number stays equal. It is runtime-only and leaves
 EEPROM and API compatibility unchanged.
 
+## D49 — Catch up bounded software-second ticks after short loop stalls (2026-10-01)
+
+The loop now consumes elapsed whole seconds and calls the existing `tickSecond()`
+up to 60 times per pass. The deadline advances from its previous value instead
+of being reset to `now`, so a 2–5 second blocking request does not silently lose
+clock seconds. The bound prevents an unusually long stall from monopolizing the
+loop; RTC synchronization remains the authoritative correction.
+
 ## D44 — Normalize Iqama countdown distance across midnight (2026-10-01)
 
 Use `forwardMinuteDistance()` for the displayed minutes remaining until Iqama.
