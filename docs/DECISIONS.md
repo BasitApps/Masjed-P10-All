@@ -637,6 +637,16 @@ Maghrib to zero minutes after Sunset, reads Maghrib from `times[5]`, and skips
 Sunset (`times[4]`) for prayer events. The change is isolated in its own
 repository commit `8996bab`; P10 legacy/v2 APIs and EEPROM layout are unchanged.
 
+## D54 — Use one prayer contract in both display firmware paths (2026-10-01)
+
+The verified library indices remain `Sunset=4`, `Maghrib=5`, and `Isha=6`; the
+event list is `{Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha}`. P10 now uses the
+same explicit index contract as 7-segment. Both paths also use the same method
+table and Makkah Isha modes: `0` follows the selected method rule and `1` is a
+fixed 90 minutes after Maghrib. Legacy CSV responses and existing EEPROM/API
+layouts remain compatible; new settings are optional and presentation stays
+profile-specific.
+
 ## D44 — Normalize Iqama countdown distance across midnight (2026-10-01)
 
 Use `forwardMinuteDistance()` for the displayed minutes remaining until Iqama.

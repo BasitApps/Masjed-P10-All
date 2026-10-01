@@ -2,6 +2,7 @@
 #define GLOBALS_H
 
 #include "constants.h"
+#include "PrayerIndex.h"
 #include "DisplayProfile.h"
 #include <Arduino.h>
 
@@ -219,7 +220,9 @@ inline char cachedMonthName[26] = {0};
 inline int8_t cachedMonthIndex = -1;
 
 // Prayer indices constant
-inline const int8_t PRAYER_INDICES[6] = {0, 1, 2, 3, 4, 6};
+inline const int8_t PRAYER_INDICES[6] = {
+    PrayerIndex::Fajr, PrayerIndex::Sunrise, PrayerIndex::Dhuhr,
+    PrayerIndex::Asr, PrayerIndex::Maghrib, PrayerIndex::Isha};
 
 // Eqama cache refresh function
 inline void refreshEqamaCache() {
@@ -227,8 +230,8 @@ inline void refreshEqamaCache() {
   eqamaCache.times[1] = config.eqamaShrouq;
   eqamaCache.times[2] = config.eqamaZohr;
   eqamaCache.times[3] = config.eqamaAsr;
-  eqamaCache.times[4] = config.eqamaMagrb;
-  eqamaCache.times[5] = 0;
+  eqamaCache.times[4] = 0;
+  eqamaCache.times[5] = config.eqamaMagrb;
   eqamaCache.times[6] = config.eqamaEsha;
   eqamaCache.sleepTime = config.sleepPrayerTime;
 }

@@ -25,9 +25,11 @@ regression test; valid font output remains unchanged.
 is stored under `release/firmware-rc1/`. Commercial release is not yet authorized.
 
 The P10/7-segment compatibility matrix is recorded in
-`docs/SEVEN_SEGMENT_COMPATIBILITY.md`. It identifies a legacy 7-segment
-PrayerTimes index mismatch (Sunset used as Maghrib); it is now fixed in the
-separate 7-segment commit `8996bab`, pending fixed-date and hardware checks.
+`docs/SEVEN_SEGMENT_COMPATIBILITY.md`. PrayerTimes event indices and the
+explicit method table (including Makkah method-rule/fixed-90 selection) now
+match in both firmware paths; P10 correction is in the current branch and the
+7-segment correction is commit `8996bab`. Fixed-date, DST/RTC, and hardware
+checks remain before release.
 
 Previous step: 2026-09-30: card text review. Corrected Hijri date logical
 order for the RTL shaper in both the rotating small-font info line and the
