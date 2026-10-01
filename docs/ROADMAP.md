@@ -19,6 +19,9 @@ Gregorian date to avoid stale results at month/year rollover, and short loop
 stalls now catch up bounded software-second ticks.
 Prayer-window boundary predicates are now centralized in a small tested phase
 classifier without changing the existing Friday/eqama behavior.
+The seasonal clock rule is now shared by P10 and 7-segment (last Friday of
+April through last Thursday of October, inclusive), while each profile keeps
+its legacy configuration field name.
 Malformed/truncated UTF-8 input is now bounded in the shaper and covered by a
 regression test; valid font output remains unchanged.
 `firmware-rc1` remains the rollback reference; its four-profile SHA-256 manifest

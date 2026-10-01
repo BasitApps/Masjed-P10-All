@@ -238,12 +238,12 @@ git diff --check
 | R0 خط الأساس والجرد | [x] | 2026-10-01: baseline في ledger و`r0-baseline.txt`؛ لا كود تغير |
 | R1 مواصفة الصلاة والإقامة | [~] | `docs/PRAYER_TIME_SPEC.md` و`docs/PRAYER_REFERENCE_CASES.csv`؛ الأرقام والقرارات المحلية معلقة |
 | R2 الحساب والكاش | [~] | 2026-10-01: explicit table + selectable Makkah rule + full-date prayer cache key; numeric reference comparison remains |
-| R3 الوقت وDST/RTC/التقويم | [~] | 2026-10-01: full-date caches and bounded second-tick catch-up; DST/RTC hardware cases remain |
+| R3 الوقت وDST/RTC/التقويم | [~] | 2026-10-01: full-date caches, bounded second-tick catch-up, and shared seasonal date rule; RTC hardware cases remain |
 | R4 نوافذ الصلاة والإقامة | [~] | 2026-10-01: cross-midnight countdown and centralized phase classifier; 0..120/Friday/Sunrise hardware boundaries remain |
 | R5 تدقيق الذاكرة والبساطة | [~] | 2026-10-01: bounded malformed UTF-8 lookahead; dynamic String uses remain cold HTTP/boot paths; heap soak remains |
 | R6 loop والعرض والشبكة | [~] | 2026-10-01: loop catches up up to 60 elapsed seconds; hardware max-loop/OTA cases remain |
 | R7 الحفظ وAPI/OTA | [~] | 2026-10-01: strict OTA version/size parsing added; save/OTA fault matrix remains |
-| R8 المقارنة والتسليم | [~] | 2026-10-01: P10 و7-segment موحدان في فهرس Maghrib وجدول الطرق وخيار مكة؛ fixed-date/DST/RTC/hardware comparison remains |
+| R8 المقارنة والتسليم | [~] | 2026-10-01: P10 و7-segment موحدان في الفهرس والطرق ومكة وDST؛ fixed-date/RTC/hardware comparison remains |
 
 قالب كل جلسة، أضفه أسفل الملف:
 

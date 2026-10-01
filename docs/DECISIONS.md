@@ -647,6 +647,15 @@ fixed 90 minutes after Maghrib. Legacy CSV responses and existing EEPROM/API
 layouts remain compatible; new settings are optional and presentation stays
 profile-specific.
 
+## D55 — Share the seasonal date rule without renaming legacy fields (2026-10-01)
+
+P10 and 7-segment now evaluate the same date-only rule: seasonal adjustment is
+active from the last Friday of April through the last Thursday of October,
+inclusive, when enabled. P10 keeps `summerTime`; 7-segment keeps its existing
+`winterTime` field because it is part of the sold-device/API contract. The RTC
+stores the unshifted value and display/prayer calculation applies the same
+one-hour presentation offset, so only the hardware presentation differs.
+
 ## D44 — Normalize Iqama countdown distance across midnight (2026-10-01)
 
 Use `forwardMinuteDistance()` for the displayed minutes remaining until Iqama.
