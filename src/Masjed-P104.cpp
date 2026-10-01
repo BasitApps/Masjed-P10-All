@@ -461,8 +461,11 @@ bool isDST(int y, int m, int d)
 }
 void calcHijri()
 {
-  if (hijriLastDay == timeData.day)
+  if (sameCalendarDate(timeData.year, timeData.month, timeData.day,
+                       hijriLastYear, hijriLastMonth, hijriLastDay))
     return;
+  hijriLastYear = timeData.year;
+  hijriLastMonth = timeData.month;
   hijriLastDay = timeData.day;
 
   int64_t a = (14 - timeData.month) / 12;
@@ -671,7 +674,8 @@ void serviceRTC(unsigned long now)
   {
     DBGLN(F("RTC recovered"));
     refreshEqamaCache();
-    invalidateCaches(prayerCache, hijriLastDay);
+    invalidateCaches(prayerCache, hijriLastYear, hijriLastMonth,
+                     hijriLastDay);
     calcHijri();
     calcPrayers();
     updatePrayerWindow(timeData.hour * 60 + timeData.min);
@@ -715,7 +719,8 @@ void tickSecond()
   if (dayRolled && !sysFlags.rtcOk())
   {
     advanceSoftwareDate();
-    invalidateCaches(prayerCache, hijriLastDay);
+    invalidateCaches(prayerCache, hijriLastYear, hijriLastMonth,
+                     hijriLastDay);
     calcHijri();
     calcPrayers();
   }
@@ -1768,7 +1773,8 @@ bool installSettings(const Configuration &next, uint8_t nextMakkahIshaMode)
 
 void refreshAfterConfigChange()
 {
-  invalidateCaches(prayerCache, hijriLastDay);
+  invalidateCaches(prayerCache, hijriLastYear, hijriLastMonth,
+                   hijriLastDay);
   calcHijri();
   calcPrayers();
   updatePrayerWindow(timeData.hour * 60 + timeData.min);

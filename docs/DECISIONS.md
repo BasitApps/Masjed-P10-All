@@ -589,6 +589,13 @@ decimal parser instead of `strtoul`, which previously accepted trailing junk
 such as `123abc`. This is a validation-only change; the signed/hash and profile
 checks remain unchanged.
 
+## D48 — Key Hijri cache by the complete Gregorian date (2026-10-01)
+
+The Hijri cache now uses the same year/month/day key as the prayer cache. This
+avoids retaining the previous converted date when only the Gregorian month or
+year changes while the day number stays equal. It is runtime-only and leaves
+EEPROM and API compatibility unchanged.
+
 ## D44 — Normalize Iqama countdown distance across midnight (2026-10-01)
 
 Use `forwardMinuteDistance()` for the displayed minutes remaining until Iqama.

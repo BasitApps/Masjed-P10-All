@@ -156,12 +156,15 @@ struct Configuration {
 };
 
 // ============ Helper Functions ============
-inline void invalidateCaches(PrayerCache &p, int8_t &hijriDay) {
+inline void invalidateCaches(PrayerCache &p, int16_t &hijriYear,
+                             int8_t &hijriMonth, int8_t &hijriDay) {
   p.valid = false;
   p.lastYear = -1;
   p.lastMonth = -1;
   p.lastDay = -1;
   p.activeStart = p.activeEnd = INT16_MIN;
+  hijriYear = -1;
+  hijriMonth = -1;
   hijriDay = -1;
 }
 
@@ -199,6 +202,8 @@ inline Configuration config;
 inline uint8_t makkahIshaMode = 0; // 0: calculation method, 1: fixed 90 min
 inline EqamaCache eqamaCache = {{-1, -1, -1, -1, -1, -1, -1}, -1};
 
+inline int16_t hijriLastYear = -1;
+inline int8_t hijriLastMonth = -1;
 inline int8_t hijriLastDay = -1;
 inline unsigned long lastSecondMs = 0;
 inline unsigned long lastRtcSyncMs = 0;
