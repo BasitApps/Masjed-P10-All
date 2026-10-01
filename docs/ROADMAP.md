@@ -12,11 +12,13 @@ R0/R1 documentation is complete/partial and R2 has its first calculation fix:
 PrayerTimes method parameters are now explicit, with Makkah Isha selectable
 between the compatibility method rule and fixed 90 minutes. The firmware-only
 field is documented for later Android work in `docs/ANDROID_DEFERRED_PLAN.md`.
-R4 also normalizes the Iqama countdown across midnight. Native tests are 25/25
+R4 also normalizes the Iqama countdown across midnight. Native tests are 26/26
 and all four release profiles build; independent numeric reference and owner
 hardware checks remain. Prayer and Hijri caches now key on the complete
 Gregorian date to avoid stale results at month/year rollover, and short loop
 stalls now catch up bounded software-second ticks.
+Prayer-window boundary predicates are now centralized in a small tested phase
+classifier without changing the existing Friday/eqama behavior.
 `firmware-rc1` remains the rollback reference; its four-profile SHA-256 manifest
 is stored under `release/firmware-rc1/`. Commercial release is not yet authorized.
 

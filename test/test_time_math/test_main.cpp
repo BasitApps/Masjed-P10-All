@@ -57,6 +57,20 @@ void test_consume_second_ticks_catches_up_without_jumping_forever()
   TEST_ASSERT_EQUAL_UINT8(5, consumeSecondTicks(20000, last, 5));
   TEST_ASSERT_EQUAL_UINT32(9000, last);
 }
+
+void test_prayer_phase_boundaries()
+{
+  TEST_ASSERT_EQUAL(PrayerPhase::PreAzan, prayerPhase(-3, 10, 5));
+  TEST_ASSERT_EQUAL(PrayerPhase::Azan, prayerPhase(0, 10, 5));
+  TEST_ASSERT_EQUAL(PrayerPhase::Azan, prayerPhase(1, 10, 5));
+  TEST_ASSERT_EQUAL(PrayerPhase::EqamaCountdown, prayerPhase(2, 10, 5));
+  TEST_ASSERT_EQUAL(PrayerPhase::EqamaSeconds, prayerPhase(9, 10, 5));
+  TEST_ASSERT_EQUAL(PrayerPhase::Eqama, prayerPhase(10, 10, 5));
+  TEST_ASSERT_EQUAL(PrayerPhase::Sleep, prayerPhase(12, 10, 5));
+  TEST_ASSERT_EQUAL(PrayerPhase::Azkar, prayerPhase(15, 10, 5));
+  TEST_ASSERT_EQUAL(PrayerPhase::Outside, prayerPhase(16, 10, 5));
+  TEST_ASSERT_EQUAL(PrayerPhase::Azan, prayerPhase(1, 1, 5));
+}
 int main(int, char **)
 {
   UNITY_BEGIN();
@@ -67,5 +81,6 @@ int main(int, char **)
   RUN_TEST(test_calendar_month_lengths);
   RUN_TEST(test_calendar_date_key_includes_month_and_year);
   RUN_TEST(test_consume_second_ticks_catches_up_without_jumping_forever);
+  RUN_TEST(test_prayer_phase_boundaries);
   return UNITY_END();
 }

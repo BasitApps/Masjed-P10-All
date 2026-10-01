@@ -24,6 +24,37 @@ inline uint8_t consumeSecondTicks(uint32_t nowMs, uint32_t &lastMs,
   return static_cast<uint8_t>(ticks);
 }
 
+enum class PrayerPhase : uint8_t
+{
+  Outside,
+  PreAzan,
+  Azan,
+  EqamaCountdown,
+  EqamaSeconds,
+  Eqama,
+  Sleep,
+  Azkar
+};
+
+inline PrayerPhase prayerPhase(int16_t since, int16_t eqama, int16_t sleep)
+{
+  if (since >= -3 && since < 0)
+    return PrayerPhase::PreAzan;
+  if (since >= 0 && since <= 1)
+    return PrayerPhase::Azan;
+  if (since >= 2 && since < eqama - 1)
+    return PrayerPhase::EqamaCountdown;
+  if (since == eqama - 1)
+    return PrayerPhase::EqamaSeconds;
+  if (since == eqama)
+    return PrayerPhase::Eqama;
+  if (since > eqama && since < eqama + sleep)
+    return PrayerPhase::Sleep;
+  if (since >= eqama + sleep && since < eqama + sleep + 1)
+    return PrayerPhase::Azkar;
+  return PrayerPhase::Outside;
+}
+
 inline int16_t signedMinuteDelta(int16_t nowMins, int16_t eventMins)
 {
   int16_t delta = nowMins - eventMins;

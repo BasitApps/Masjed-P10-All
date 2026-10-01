@@ -1046,8 +1046,10 @@ void checkPrayers(unsigned long now, int16_t nowMins)
     if ((!friday && i != 2) && (delta > 5 || since > 30)) 
       continue;
     const bool skipEq = (i == 2 && friday);
+    const PrayerPhase phase =
+        skipEq ? PrayerPhase::Outside : prayerPhase(since, eq, sleepTime);
     // 1. Pre-Prayer (3 mins before: delta 3, 2, 1)
-    if (delta > 0 && delta <= 3)
+    if (phase == PrayerPhase::PreAzan)
     {
       dispState.setStopCards(true);
       uint8_t h, m;
@@ -1060,7 +1062,7 @@ void checkPrayers(unsigned long now, int16_t nowMins)
       return;
     }
     // 2. Azan (Now + 1 min: since 0, 1)
-    if (since >= 0 && since <= 1)
+    if (phase == PrayerPhase::Azan)
     {
       dispState.setStopCards(true);
       if (i == 1)
@@ -1087,9 +1089,7 @@ void checkPrayers(unsigned long now, int16_t nowMins)
       sleeping();
       return;
     }
-    if (skipEq)
-      continue;
-    if (since >= 2 && since < eq - 1)
+    if (phase == PrayerPhase::EqamaCountdown)
     {
       dispState.setStopCards(true);
       snprintf_P(dispState.runText, sizeof(dispState.runText),
@@ -1100,7 +1100,7 @@ void checkPrayers(unsigned long now, int16_t nowMins)
       displayText(dispState.runText, dispState.tempBuf, false, true, now);
       return;
     }
-    if (since == eq - 1)
+    if (phase == PrayerPhase::EqamaSeconds)
     {
       dispState.setStopCards(true);
       snprintf_P(dispState.runText, sizeof(dispState.runText),
@@ -1109,7 +1109,7 @@ void checkPrayers(unsigned long now, int16_t nowMins)
       displayText(dispState.runText, nullptr, false, true, now);
       return;
     }
-    if (since == eq)
+    if (phase == PrayerPhase::Eqama)
     {
       dispState.setStopCards(true);
       safeCopyP(dispState.runText, english ? MSG_EQAMA_EN : MSG_EQAMA,
@@ -1117,13 +1117,13 @@ void checkPrayers(unsigned long now, int16_t nowMins)
       displayText(dispState.runText, nullptr, true, true, now);
       return;
     }
-    if (since > eq && since < eq + sleepTime)
+    if (phase == PrayerPhase::Sleep)
     {
       dispState.setStopCards(true);
       sleeping();
       return;
     }
-    if (since >= eq + sleepTime && since < eq + 1 + sleepTime)
+    if (phase == PrayerPhase::Azkar)
     {
       dispState.setStopCards(true);
       safeCopyP(dispState.runText,

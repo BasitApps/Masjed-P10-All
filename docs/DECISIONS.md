@@ -604,6 +604,14 @@ of being reset to `now`, so a 2–5 second blocking request does not silently lo
 clock seconds. The bound prevents an unusually long stall from monopolizing the
 loop; RTC synchronization remains the authoritative correction.
 
+## D50 — Centralize prayer-window phase boundaries (2026-10-01)
+
+Keep the existing display behavior, but classify `since/eqama/sleep` once with
+`prayerPhase()`. The renderer consumes the same phases for pre-azan, azan,
+countdown, final seconds, eqama, sleep, and azkar. Friday's special path still
+skips eqama before classification. This removes duplicated boundary predicates
+without introducing a general state-machine framework.
+
 ## D44 — Normalize Iqama countdown distance across midnight (2026-10-01)
 
 Use `forwardMinuteDistance()` for the displayed minutes remaining until Iqama.
