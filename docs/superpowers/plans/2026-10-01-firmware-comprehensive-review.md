@@ -243,7 +243,7 @@ git diff --check
 | R5 تدقيق الذاكرة والبساطة | [ ] | جرد لكل ملفات المشروع وقياس قبل/بعد |
 | R6 loop والعرض والشبكة | [~] | 2026-10-01: loop catches up up to 60 elapsed seconds; hardware max-loop/OTA cases remain |
 | R7 الحفظ وAPI/OTA | [~] | 2026-10-01: strict OTA version/size parsing added; save/OTA fault matrix remains |
-| R8 المقارنة والتسليم | [ ] | 7-segment ومقاسات P10 وتجربة المالك |
+| R8 المقارنة والتسليم | [~] | 2026-10-01: compatibility matrix added; 7-segment Maghrib index mismatch is isolated as R8-001; independent numeric/hardware comparison remains |
 
 قالب كل جلسة، أضفه أسفل الملف:
 
@@ -278,6 +278,7 @@ commit الدفعة (إن وُجد):
 `R3-001 | P1 | src/Masjed-P104.cpp:loop/tickSecond | deadline was reset to `now` after a stall | 2–5 seconds of blocking work silently lost software-clock seconds | consume elapsed whole-second ticks with a 60-tick bound; RTC remains authority | test_time_math 7/7, native 25/25, release profiles 4/4 (RAM 37408/37428/37524/37544; Flash 426623/426763/427963/428119) | resolved in working tree; real blocking/RTC correction cases remain`.
 `R4-002 | P1 | src/Masjed-P104.cpp:checkPrayers | phase boundaries were duplicated across independent predicates | future edits could make renderer and window semantics diverge | add tested `prayerPhase()` and consume it in the existing renderer; preserve Friday special path | test_time_math 8/8, native 26/26, release profiles 4/4 (RAM 37408/37428/37524/37544; Flash 426607/426747/427947/428087) | resolved in working tree; hardware boundary checks remain`.
 `R4-001 | P1 | src/Masjed-P104.cpp:checkPrayers | بعد منتصف الليل كان عداد الإقامة يستخدم طرحًا خامًا رغم أن نافذة الحدث تعبر 1440 | قد تظهر قيمة أكبر من 1440 بدل الدقائق المتبقية | اختبار forward distance عبر منتصف الليل فشل قبل helper | أضيفت `forwardMinuteDistance()` واستخدمت في النص فقط مع إبقاء النافذة كما هي | `test_time_math` 5/5، native 25/25، release profiles 4/4 | resolved in working tree; event semantics still need hardware/reference cases`.
+`R8-001 | P1 | Masjed_TA_All_v2/src/Masjed_TA.cpp:Checking | الحلقة تستبعد `times[5]` وتربط `times[4]` بالإقامة/الأذان المسماة Maghrib | 7-segment قد يعرض Sunset كالمغرب ويتجاهل وقت المغرب الحقيقي | قراءة مباشرة للكود + مواصفة الفهارس الحالية؛ لا تخمين من أسماء الحقول | عُزل الفرق في `docs/SEVEN_SEGMENT_COMPATIBILITY.md`؛ إصلاح منفصل مطلوب بعد numeric/hardware reference | review evidence only; no P10 build impact | open, separate repository/owner approval required`.
 
 ## 9. تعليمات الاستئناف المختصرة
 

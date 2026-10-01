@@ -612,6 +612,16 @@ countdown, final seconds, eqama, sleep, and azkar. Friday's special path still
 skips eqama before classification. This removes duplicated boundary predicates
 without introducing a general state-machine framework.
 
+## D51 — Keep 7-segment comparison isolated (2026-10-01)
+
+The separate 7-segment repository uses a different web stack, configuration
+layout, and prayer-index loop. Its current loop skips `times[5]` (Maghrib) and
+uses `times[4]` for the Maghrib field, while P10 follows the verified mapping
+where index 4 is Sunset and index 5 is Maghrib. Record this as a P1 finding and
+do not silently patch either repository until a fixed-date numeric and hardware
+comparison is approved. Legacy P10 API and sold-device compatibility remain
+unchanged.
+
 ## D44 — Normalize Iqama countdown distance across midnight (2026-10-01)
 
 Use `forwardMinuteDistance()` for the displayed minutes remaining until Iqama.
