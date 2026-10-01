@@ -14,8 +14,8 @@ between the compatibility method rule and fixed 90 minutes. The firmware-only
 field is documented for later Android work in `docs/ANDROID_DEFERRED_PLAN.md`.
 R4 also normalizes the Iqama countdown across midnight. Native tests are 24/24
 and all four release profiles build; independent numeric reference and owner
-hardware checks remain. The prayer cache now keys on the complete Gregorian
-date to avoid stale results at month/year rollover.
+hardware checks remain. Prayer and Hijri caches now key on the complete
+Gregorian date to avoid stale results at month/year rollover.
 `firmware-rc1` remains the rollback reference; its four-profile SHA-256 manifest
 is stored under `release/firmware-rc1/`. Commercial release is not yet authorized.
 
