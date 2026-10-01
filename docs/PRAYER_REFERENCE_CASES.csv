@@ -1,0 +1,13 @@
+id,date,lat,lon,utc_offset,dst_hours,method,asr_method,event,expected_minute,tolerance_minutes,source,status,notes
+cairo_equinox,2026-03-20,30.0444,31.2357,2,0,Egypt,Shafii,Fajr,,,owner-or-independent-reference,pending,ثبت التوقيت المحلي والتقريب قبل إدخال الرقم
+cairo_equinox,2026-03-20,30.0444,31.2357,2,0,Egypt,Shafii,Sunrise,,,owner-or-independent-reference,pending,الشروق ليس مغربًا
+cairo_equinox,2026-03-20,30.0444,31.2357,2,0,Egypt,Shafii,Dhuhr,,,owner-or-independent-reference,pending,
+cairo_equinox,2026-03-20,30.0444,31.2357,2,0,Egypt,Shafii,Asr,,,owner-or-independent-reference,pending,
+cairo_equinox,2026-03-20,30.0444,31.2357,2,0,Egypt,Shafii,Maghrib,,,owner-or-independent-reference,pending,يجب التحقق من index 5 مقابل index 4
+cairo_equinox,2026-03-20,30.0444,31.2357,2,0,Egypt,Shafii,Isha,,,owner-or-independent-reference,pending,
+makkah_summer,2026-07-01,21.3891,39.8579,3,0,Makkah,Shafii,Fajr,,,owner-or-independent-reference,pending,راجع قرار 90 دقيقة مقابل زاوية 17
+makkah_summer,2026-07-01,21.3891,39.8579,3,0,Makkah,Shafii,Maghrib,,,owner-or-independent-reference,pending,
+makkah_summer,2026-07-01,21.3891,39.8579,3,0,Makkah,Shafii,Isha,,,owner-or-independent-reference,pending,
+karachi_winter,2026-12-21,24.8607,67.0011,5,0,Karachi,Hanafi,Fajr,,,owner-or-independent-reference,pending,
+karachi_winter,2026-12-21,24.8607,67.0011,5,0,Karachi,Hanafi,Asr,,,owner-or-independent-reference,pending,
+karachi_winter,2026-12-21,24.8607,67.0011,5,0,Karachi,Hanafi,Isha,,,owner-or-independent-reference,pending,

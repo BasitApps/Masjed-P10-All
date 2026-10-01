@@ -548,3 +548,19 @@ zero-spacing and connected.
 
 **Consequences:** Tahoma-derived English words no longer touch, while Arabic
 numeric strings become readable without separating joining letters.
+
+## D43 — Configure all PrayerTimes twilight rules explicitly (2026-10-01)
+
+`calcPrayers()` now uses a small source-owned method table and explicitly sets
+Fajr, Maghrib, and Isha on the library's `Custom` slot. The vendored header
+does not declare its existing minute setters, so the firmware provides narrow
+forward declarations without modifying `lib/PrayerTimes`. Standard mappings are
+Egypt 19.5°/17.5°, MWL 18°/17°, Karachi 18°/18°, Custom 18°/17.5°, and Makkah
+18.5° Fajr plus 90 minutes after Maghrib. Maghrib is sunset plus zero minutes
+for these mappings.
+
+The previous code selected a method and then called Fajr/Isha setters, which
+forced `Custom`; it also left Maghrib mode/value implicit in zero-initialized
+library state. Native tests cover the method table. Numeric reference cases and
+the product meaning of Makkah/eqama settings remain in
+`docs/PRAYER_TIME_SPEC.md` pending independent/local timetable verification.

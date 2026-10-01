@@ -1,5 +1,14 @@
 # تقدم خطة تثبيت واعتمادية ESP8266
 
+## Active review handoff — 2026-10-01
+
+The owner confirmed RC1 initial operation and requested continued firmware
+development. The current comprehensive prayer/iqama, simplicity, and performance
+review and progress log are in
+`docs/superpowers/plans/2026-10-01-firmware-comprehensive-review.md`.
+Entries below are historical; their completed markers do not close the new
+review. Plan prepared only; R0/R1 execution is next, no new build/upload/tests.
+
 ## Latest handoff — source-only, owner testing
 - Android commercial-hardening source resumed; DB serial/model mapping preserved.
   HMAC/key storage/password UI integrated, command sequencing/readback improved.

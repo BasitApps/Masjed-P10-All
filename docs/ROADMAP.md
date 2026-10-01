@@ -4,10 +4,16 @@
 > Keep the "Current step" line accurate at all times — it is the first thing
 > any new session reads.
 
-**Current step:** 2026-10-01: Release Candidate 1 packaged and tagged as
-`firmware-rc1`; all four P10 release profiles build successfully and their
-SHA-256 manifest is stored under `release/firmware-rc1/`. Owner hardware
-installation and soak test are the remaining gates before a commercial tag.
+**Current step:** 2026-10-01: Owner uploaded RC1 and confirmed initial operation.
+Firmware development remains open. The active comprehensive prayer/iqama and
+code simplicity/performance review plan, including its progress log, is
+`docs/superpowers/plans/2026-10-01-firmware-comprehensive-review.md`.
+R0/R1 documentation is complete/partial and R2 has its first calculation fix:
+PrayerTimes method parameters are now explicit, including Makkah Isha 90 minutes.
+Native tests are 21/21 and all four release profiles build; independent numeric
+reference and owner hardware checks remain.
+`firmware-rc1` remains the rollback reference; its four-profile SHA-256 manifest
+is stored under `release/firmware-rc1/`. Commercial release is not yet authorized.
 
 Previous step: 2026-09-30: card text review. Corrected Hijri date logical
 order for the RTL shaper in both the rotating small-font info line and the

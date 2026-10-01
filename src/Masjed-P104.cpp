@@ -4,6 +4,7 @@
 #include "CardScheduler.h"
 #include "constants.h"
 #include "globals.h"
+#include "PrayerMethodConfig.h"
 #include "texts.h"
 #include "OtaPublicKey.h"
 #include <Arduino.h>
@@ -25,6 +26,10 @@
 #include <fonts/BasitFont16Indic.h>
 #include <fonts/Tahoma7Indic.h>
 #include <fonts/Tahoma16Indic.h>
+
+// PrayerTimes.cpp defines these setters but its legacy header omits them.
+void set_maghrib_minutes(double minutes);
+void set_isha_minutes(double minutes);
 
 ESP8266WebServer server(80);
 RTC_DS3231 rtc;
@@ -433,23 +438,18 @@ void calcPrayers()
 
   set_high_lats_adjust_method(AngleBased);
 
-  struct MCfg
-  {
-    int m;
-    double f, i;
-  };
-  static const MCfg methods[] = {{Egypt, 19.5, 17.5},
-                                 {Makkah, 18.5, 17.0},
-                                 {Custom, 18.0, 17.5},
-                                 {MWL, 18.0, 17.0},
-                                 {Karachi, 18.0, 18.0}};
-
-  if (config.calcMethod <= 4)
-  {
-    set_calc_method((CalculationMethod)methods[config.calcMethod].m);
-    set_fajr_angle(methods[config.calcMethod].f);
-    set_isha_angle(methods[config.calcMethod].i);
-  }
+  const PrayerMethodConfig method = prayerMethodConfig(config.calcMethod);
+  // The library's setters intentionally select Custom. Configure all three
+  // twilight rules explicitly so no stale or zero-initialized field survives.
+  set_fajr_angle(method.fajrAngle);
+  if (method.maghribInMinutes)
+    set_maghrib_minutes(method.maghribValue);
+  else
+    set_maghrib_angle(method.maghribValue);
+  if (method.ishaInMinutes)
+    set_isha_minutes(method.ishaValue);
+  else
+    set_isha_angle(method.ishaValue);
   set_asr_method(config.wayMethod == 0 ? Shafii : Hanafi);
 
   int dst =

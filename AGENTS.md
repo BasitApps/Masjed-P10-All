@@ -1,5 +1,14 @@
 # AGENTS.md — Project Guide for AI Assistants
 
+> **Active handoff (2026-10-01):** Start with
+> `docs/superpowers/plans/2026-10-01-firmware-comprehensive-review.md` for the
+> comprehensive prayer/iqama/correctness/performance review and its progress log.
+> RC1 was uploaded and initially confirmed working by the owner; development
+> continues. Arabic UTF-8 shaping and the eight Basit/Tahoma font variants are
+> already implemented. Legacy-encoding descriptions below are historical.
+> PrayerTimes index 1 is Sunrise, 4 is Sunset, 5 is Maghrib; verify the current
+> application mapping rather than following the outdated index description.
+
 > **ملخص عربي:** ده مشروع فيرموير ESP8266 لشاشة LED Matrix (P10) لمسجد.
 > الشاشة 128×16 بكسل (4 لوحات P10). المشروع حالياً بيستخدم ترميز عربي مخصص قديم
 > (كل خانة ASCII في الخط بترسم شكل حرف عربي معيّن، والنصوص مخزنة معكوسة).
