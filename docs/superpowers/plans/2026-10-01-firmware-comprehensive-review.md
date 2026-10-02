@@ -242,7 +242,7 @@ git diff --check
 | R4 نوافذ الصلاة والإقامة | [~] | 2026-10-02: P10 classifier موجود، و7-segment يستخدم نفس الحدود وعبور منتصف الليل؛ أضيفت اختبارات الإقامة القصيرة/النوم؛ 0..120/Friday/Sunrise hardware boundaries remain |
 | R5 تدقيق الذاكرة والبساطة | [~] | 2026-10-01: bounded malformed UTF-8 lookahead; dynamic String uses remain cold HTTP/boot paths; heap soak remains |
 | R6 loop والعرض والشبكة | [~] | 2026-10-02: loop catches up up to 60 elapsed seconds، واختبار `millis()` rollover يمر؛ hardware max-loop/OTA cases remain |
-| R7 الحفظ وAPI/OTA | [~] | 2026-10-02: strict OTA version/size parsing، واختبارات رفض حيّة، وحفظ/قراءة ناجحان لقيمة إقامة ثم إعادتها؛ مصفوفة الحفظ/OTA الكاملة ما زالت |
+| R7 الحفظ وAPI/OTA | [~] | 2026-10-02: strict OTA version/size parsing، واختبارات رفض حيّة للحجم/التكرار/البطاقات، وحفظ/قراءة ناجحان لقيمة إقامة ثم إعادتها؛ مصفوفة الحفظ/OTA الكاملة ما زالت |
 | R8 المقارنة والتسليم | [~] | 2026-10-01: P10 و7-segment موحدان في الفهرس والطرق ومكة وDST ومصنف المرحلة؛ fixed-date parity نجح، وRTC/hardware remains |
 
 قالب كل جلسة، أضفه أسفل الملف:
@@ -287,6 +287,7 @@ commit الدفعة (إن وُجد):
 `R2-004 | P1 | P10/7-segment PrayerTimes contract | نفس التاريخ/الموقع كان معرضًا لاختلاف فهرس أو طريقة بين مساري العرض | وقت صلاة غير متطابق أو مغرب محسوب من Sunset | host harness شغّل نسختي المكتبة بنفس معاملات Cairo/Makkah/Karachi؛ النتائج السبع متطابقة، وCSV المرجعي حُدّث بالدقائق المقربة | أربع حالات، منها مكة angle وfixed-90، parity كامل؛ مرجع المسجد المحلي واختبار RTC/العتاد متبقيان | resolved for cross-firmware parity; external reference pending`.
 `R7-002 | P1 | src/Masjed-P104.cpp:beginV2/readIntArg/readFloatArg | مدخلات API غير صالحة قد تعدل الإعداد أو تمرر NaN/حدًا خارج النطاق | يجب رفض الطلب قبل الحفظ مع بقاء readback كما هو | اختبار حي على P10: `f=121` و`lat=nan` أعادا HTTP 422، والمفتاح المكرر أعاد HTTP 400؛ readback بقي `f=15`, `lat=31.0430`، وhealth ظل `rtc=1` | rejection path verified on hardware; malformed UTF-8/long body/EEPROM fault and OTA matrix remain`.
 `R7-003 | P1 | src/Masjed-P104.cpp:installConfig/saveConfig | نجاح الحفظ يجب أن يعيد القيمة نفسها دون تعديل حقول أخرى | حفظ `s=12` أعاد `eqamaOk` وreadback `s=12`، ثم استُعيدت القيمة الأصلية `s=11` وقرأها الجهاز كما كانت؛ بقية البيانات بقيت ثابتة | live P10 readback verified; restart/EEPROM fault and repeated-write instrumentation remain`.
+`R7-004 | P1 | src/Masjed-P104.cpp:beginV2/handleSetCardSettings | body كبير/مفتاح مكرر/ترتيب بطاقات غير صالح يجب ألا يصل للحفظ | الطلبات غير الصالحة يجب أن تفشل قبل تعديل الحالة | live P10: body 600-byte وduplicate key أعادا 400، وترتيب `AAAAAAAAAAAA` أعاد 422؛ card readback بقي `mask=128, order=ABCDEFGHIJKL`; selfTest ظل `ok=1` و`rtc=1` | API boundary rejection verified; UTF-8 malformed, EEPROM fault, and OTA interruption remain`.
 
 ## 9. تعليمات الاستئناف المختصرة
 
