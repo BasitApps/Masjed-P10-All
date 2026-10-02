@@ -672,3 +672,13 @@ firmware verifier adds that byte in a bounded local copy before calling the raw
 verifier. The signing tool now emits the same raw format. The restart delay is
 10 seconds so the success response can leave the socket before the AP reboots;
 legacy `/updateMain` compatibility is unchanged.
+
+## D57 — Treat signed OTA socket closure as a post-reboot confirmation case (2026-10-02)
+
+Live P10 tests accepted the signed image, rebooted, and returned healthy
+`/v2/health` with `rtc=1`, but the multipart HTTP client did not receive the
+success body before the ESP8266 closed/restarted the socket. The firmware keeps
+the official `NoDelay/flush/delay/stop` response sequence; the Android client
+should confirm a closed OTA request with a bounded post-reboot health check
+instead of declaring the update failed. No change is made to legacy update
+compatibility until that client behavior is verified.

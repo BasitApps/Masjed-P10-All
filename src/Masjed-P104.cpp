@@ -2319,7 +2319,13 @@ void handleOTAComplete()
     bool ok = otaSucceeded && !otaRejected && !Update.hasError();
     if (ok)
     {
+      server.client().setNoDelay(true);
       sendV2(200, "v=2\nok=1\nresult=updateOk\nrestart=1");
+      // Finish the HTTP response before the delayed reboot closes the AP socket.
+      server.client().flush();
+      delay(100);
+      server.client().stop();
+      yield();
       endV2();
       otaV2Upload = false;
       otaSucceeded = false;

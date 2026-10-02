@@ -48,9 +48,11 @@ disconnect/reconnect testing remains for the owner.
 The release OTA verifier now handles BearSSL's 64-byte parsed EC point by
 adding the SEC1 prefix only for verification; the signing tool emits raw
 P-256 `r||s` signatures. All four release profiles build and native tests are
-32/32 green. A 4x1 release was uploaded successfully over USB; final OTA
-response/restart verification is waiting for the operator to reconnect the
-computer to the P10 access point after the upload.
+32/32 green. Signed OTA was verified live on 4x1 by successful flash write,
+reboot, and post-reboot `health` (`rtc=1`). The multipart client still sees a
+timeout/reset instead of the success body, so Android should treat a closed
+OTA socket as pending and confirm with post-reboot health before reporting
+failure; this is the remaining OTA follow-up.
 
 Previous step: 2026-09-30: card text review. Corrected Hijri date logical
 order for the RTL shaper in both the rotating small-font info line and the
