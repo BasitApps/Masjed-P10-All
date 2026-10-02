@@ -239,9 +239,9 @@ git diff --check
 | R1 مواصفة الصلاة والإقامة | [~] | `docs/PRAYER_TIME_SPEC.md` و`docs/PRAYER_REFERENCE_CASES.csv`؛ حالات fixed-date موثقة، واعتماد جدول المسجد المحلي ما زال مطلوبًا |
 | R2 الحساب والكاش | [~] | 2026-10-01: explicit table + selectable Makkah rule + full-date prayer cache key؛ parity رقمي بين المسارين مثبت لأربع حالات، والمرجع المحلي النهائي متبقٍ |
 | R3 الوقت وDST/RTC/التقويم | [~] | 2026-10-02: full-date caches, bounded second-tick catch-up, shared seasonal date rule, matching Hijri conversion in 7-segment، واستعادة RTC عبر `/setDateTime` بدون فصل الكهرباء؛ اختبار فصل/عودة الوحدة ما زال مطلوبًا |
-| R4 نوافذ الصلاة والإقامة | [~] | 2026-10-01: P10 classifier موجود، و7-segment يستخدم نفس الحدود وعبور منتصف الليل؛ 0..120/Friday/Sunrise hardware boundaries remain |
+| R4 نوافذ الصلاة والإقامة | [~] | 2026-10-02: P10 classifier موجود، و7-segment يستخدم نفس الحدود وعبور منتصف الليل؛ أضيفت اختبارات الإقامة القصيرة/النوم؛ 0..120/Friday/Sunrise hardware boundaries remain |
 | R5 تدقيق الذاكرة والبساطة | [~] | 2026-10-01: bounded malformed UTF-8 lookahead; dynamic String uses remain cold HTTP/boot paths; heap soak remains |
-| R6 loop والعرض والشبكة | [~] | 2026-10-01: loop catches up up to 60 elapsed seconds; hardware max-loop/OTA cases remain |
+| R6 loop والعرض والشبكة | [~] | 2026-10-02: loop catches up up to 60 elapsed seconds، واختبار `millis()` rollover يمر؛ hardware max-loop/OTA cases remain |
 | R7 الحفظ وAPI/OTA | [~] | 2026-10-02: strict OTA version/size parsing، واختبارات رفض حيّة، وحفظ/قراءة ناجحان لقيمة إقامة ثم إعادتها؛ مصفوفة الحفظ/OTA الكاملة ما زالت |
 | R8 المقارنة والتسليم | [~] | 2026-10-01: P10 و7-segment موحدان في الفهرس والطرق ومكة وDST ومصنف المرحلة؛ fixed-date parity نجح، وRTC/hardware remains |
 
