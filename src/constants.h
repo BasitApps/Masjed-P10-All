@@ -36,7 +36,7 @@
 #define MS_RTC_SYNC 300000UL
 #define MS_RTC_RETRY 30000UL
 #define MS_SPLASH 10000UL
-#define MS_RESTART_DELAY 5000UL
+#define MS_RESTART_DELAY 10000UL // allow HTTP/OTA success response to flush
 #define MS_WIFI_YIELD 50UL
 #define MS_CARD_DURATION 5000UL
 #define MS_WIFI_TIMEOUT 600000UL // 10 minutes

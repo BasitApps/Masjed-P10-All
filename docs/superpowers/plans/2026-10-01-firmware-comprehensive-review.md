@@ -242,7 +242,7 @@ git diff --check
 | R4 نوافذ الصلاة والإقامة | [~] | 2026-10-02: P10 classifier موجود، و7-segment يستخدم نفس الحدود وعبور منتصف الليل؛ أضيفت اختبارات الإقامة القصيرة/النوم؛ 0..120/Friday/Sunrise hardware boundaries remain |
 | R5 تدقيق الذاكرة والبساطة | [~] | 2026-10-01: bounded malformed UTF-8 lookahead; dynamic String uses remain cold HTTP/boot paths; heap soak remains |
 | R6 loop والعرض والشبكة | [~] | 2026-10-02: loop catches up up to 60 elapsed seconds، واختبار `millis()` rollover يمر؛ hardware max-loop/OTA cases remain |
-| R7 الحفظ وAPI/OTA | [~] | 2026-10-02: strict OTA version/size parsing، واختبارات رفض حيّة للحجم/التكرار/البطاقات، وحفظ/قراءة ناجحان لقيمة إقامة ثم إعادتها؛ مصفوفة الحفظ/OTA الكاملة ما زالت |
+| R7 الحفظ وAPI/OTA | [~] | 2026-10-02: strict OTA version/size parsing، ورفض حيّ للحدود/التكرار/البطاقات، وقراءة/حفظ ناجحان، وبناء/رفع release 4x1 بعد إصلاح BearSSL EC؛ OTA الإنتاج النهائي ينتظر عودة Wi‑Fi لإثبات الرد قبل إعادة التشغيل |
 | R8 المقارنة والتسليم | [~] | 2026-10-01: P10 و7-segment موحدان في الفهرس والطرق ومكة وDST ومصنف المرحلة؛ fixed-date parity نجح، وRTC/hardware remains |
 
 قالب كل جلسة، أضفه أسفل الملف:
@@ -288,6 +288,9 @@ commit الدفعة (إن وُجد):
 `R7-002 | P1 | src/Masjed-P104.cpp:beginV2/readIntArg/readFloatArg | مدخلات API غير صالحة قد تعدل الإعداد أو تمرر NaN/حدًا خارج النطاق | يجب رفض الطلب قبل الحفظ مع بقاء readback كما هو | اختبار حي على P10: `f=121` و`lat=nan` أعادا HTTP 422، والمفتاح المكرر أعاد HTTP 400؛ readback بقي `f=15`, `lat=31.0430`، وhealth ظل `rtc=1` | rejection path verified on hardware; malformed UTF-8/long body/EEPROM fault and OTA matrix remain`.
 `R7-003 | P1 | src/Masjed-P104.cpp:installConfig/saveConfig | نجاح الحفظ يجب أن يعيد القيمة نفسها دون تعديل حقول أخرى | حفظ `s=12` أعاد `eqamaOk` وreadback `s=12`، ثم استُعيدت القيمة الأصلية `s=11` وقرأها الجهاز كما كانت؛ بقية البيانات بقيت ثابتة | live P10 readback verified; restart/EEPROM fault and repeated-write instrumentation remain`.
 `R7-004 | P1 | src/Masjed-P104.cpp:beginV2/handleSetCardSettings | body كبير/مفتاح مكرر/ترتيب بطاقات غير صالح يجب ألا يصل للحفظ | الطلبات غير الصالحة يجب أن تفشل قبل تعديل الحالة | live P10: body 600-byte وduplicate key أعادا 400، وترتيب `AAAAAAAAAAAA` أعاد 422؛ card readback بقي `mask=128, order=ABCDEFGHIJKL`; selfTest ظل `ok=1` و`rtc=1` | API boundary rejection verified; UTF-8 malformed, EEPROM fault, and OTA interruption remain`.
+`R7-005 | P1 | src/Masjed-P104.cpp:OtaSigningVerifier + tools/sign_ota.ps1 | BearSSL يخزن نقطة EC من PEM بطول 64 بايت، بينما raw verifier يحتاج SEC1 prefix؛ توقيع صحيح كان يرفض بـ verify | signed OTA debug أثبت hash/signature مطابقين محلياً ثم نجح بعد إضافة `0x04` مؤقتاً، والإنتاج بُني ورفع عبر USB | إضافة verifier صغير يضيف prefix أثناء التحقق فقط، وتغيير أداة التوقيع إلى `r||s` ثابت 64 بايت، وزيادة مهلة restart إلى 10 ثوانٍ لرد HTTP | native 32/32، release profiles 4/4 (RAM 37404/37416/37504/37532؛ Flash 426883/427023/428223/428363)، رفع COM5 ناجح؛ OTA production response/restart verification pending Wi‑Fi reconnect | fixed in working tree; commit pending`.
+
+جلسة 2026-10-02: اختبارات الحافة الحية أعادت `422` لـ `f=121` و`lat=nan`، و`400` للمفتاح المكرر، ونجح no-op لـ `setEqama` و`setSettings` و`setCardSettings`. `health/selfTest/getData` أعادت `HTTP 200` و`rtc=1` و`display=1` و`profile=4x1`. بناء release الأربعة وnative (32/32) ناجحان. بعد رفع release 4x1 الأخير انقطع اتصال Wi‑Fi من الكمبيوتر؛ اختبار OTA الإنتاجي مؤجل حتى يعاد الاتصال بالشبكة.
 
 ## 9. تعليمات الاستئناف المختصرة
 

@@ -2182,7 +2182,35 @@ static uint32_t otaReceivedSize = 0;
 static char otaError[24] = "ota_error";
 static BearSSL::PublicKey otaPublicKey(OTA_VENDOR_PUBLIC_KEY_PEM);
 static BearSSL::HashSHA256 otaSignatureHash;
-static BearSSL::SigningVerifier otaSignatureVerifier(&otaPublicKey);
+// OTA carries a fixed-width raw P-256 signature: r||s = 64 bytes. BearSSL's
+// PEM parser stores the EC point without its SEC1 0x04 prefix; add it only
+// while verifying because the raw verifier requires the full 65-byte point.
+class OtaSigningVerifier : public BearSSL::SigningVerifier
+{
+public:
+  explicit OtaSigningVerifier(BearSSL::PublicKey *key) : SigningVerifier(key) {}
+  uint32_t length() override { return 64; }
+  bool verify(UpdaterHashClass *hash, const void *signature,
+              uint32_t signatureLen) override
+  {
+    if (!hash || !signature || signatureLen != length() || !otaPublicKey.isEC())
+      return false;
+    const br_ec_public_key *parsedKey = otaPublicKey.getEC();
+    if (!parsedKey || parsedKey->qlen != 64)
+      return false;
+    uint8_t point[65];
+    point[0] = 0x04;
+    memcpy(point + 1, parsedKey->q, 64);
+    br_ec_public_key verifierKey = *parsedKey;
+    verifierKey.q = point;
+    verifierKey.qlen = sizeof(point);
+    br_ecdsa_vrfy verifier = br_ecdsa_vrfy_raw_get_default();
+    return verifier(br_ec_get_default(), hash->hash(), hash->len(),
+                    &verifierKey,
+                    static_cast<const unsigned char *>(signature), signatureLen) != 0;
+  }
+};
+static OtaSigningVerifier otaSignatureVerifier(&otaPublicKey);
 static bool otaSuccessPendingRestart = false;
 static bool otaSuccessFrameReady = false;
 static char otaSuccessText[BUF_SMALL];

@@ -663,3 +663,12 @@ The active-window helper already accepts end minutes beyond 1440, but the old
 format argument subtracted raw clock minutes and could display values above one
 day after midnight. The helper keeps the existing window boundaries and only
 normalizes the countdown to 0..1439.
+
+## D56 — Verify raw OTA EC signatures with the parsed BearSSL point (2026-10-02)
+
+The v2 OTA signature remains fixed-width P-256 `r||s` (64 bytes). BearSSL's
+PEM parser exposes the public EC point without the SEC1 `0x04` prefix, so the
+firmware verifier adds that byte in a bounded local copy before calling the raw
+verifier. The signing tool now emits the same raw format. The restart delay is
+10 seconds so the success response can leave the socket before the AP reboots;
+legacy `/updateMain` compatibility is unchanged.
