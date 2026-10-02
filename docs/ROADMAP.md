@@ -68,7 +68,9 @@ when the bundled GCC path is supplied. Text caches now invalidate when the
 display language changes.
 Long Hijri month names still use a compact top-line fallback so they cannot
 overlap the clock zone; full names remain in scrolling cards.
-Reliability soak remains paused by the owner.
+Owner-confirmed 24-hour reliability soak is complete; no additional numeric
+telemetry was supplied, so the ledger records completion without inventing
+uptime or heap measurements.
 
 **Commercial v2:** مؤجل حاليًا. المسار التجاري المعتمد هو `/updateMain`
 للحفاظ على توافق واستقرار الأجهزة القديمة؛ لا يبدأ ترحيل OTA جديد إلا بقرار
@@ -169,7 +171,7 @@ Reliability soak remains paused by the owner.
       assets
 - [x] Hardware test by owner: P10 image and movement confirmed excellent;
       API, invalid/valid OTA, and 20 resets passed
-- [~] Reliability soak: paused by owner; restart from zero after font/app work
+- [x] Reliability soak: owner confirmed the 24-hour manual test complete
 - [ ] Merge `feature/arabic-support` into `main`
 - [ ] Update README.md (new Arabic pipeline, app protocol notes)
 - [x] Package `P104-rc1` for 1x1, 2x1, 3x1, and 4x1 with SHA-256 manifest;

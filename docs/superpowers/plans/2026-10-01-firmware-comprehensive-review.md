@@ -201,7 +201,7 @@ Android الصحيح: `C:/Users/m_nag/Desktop/Android_Projects/MasjedClockWiFi`�
 - [ ] إذا طُلب إصلاح 7-segment، نفذه في مستودعه كسجل/commit مستقل، ولا تغير قدرة حقول الساعة ذات الخانة الواحدة تلقائيًا إلى 24 ساعة.
 - [ ] نفذ native المناسبة مرة بعد التغيير؛ بناء release للمقاسات الأربعة قبل تسليم الدفعة الجامعة. اختبارات الشبكة/العرض القصيرة فقط مع عتاد متصل وطلب واضح.
 - [ ] أعط المالك قائمة تجربة عملية قصيرة: حد أذان/إقامة، الجمعة والشروق، تغيير موقع/وقت، RTC فصل/عودة، حفظ/قراءة/restart، OTA. سجل جهاز/profile/version لكل نتيجة.
-- [ ] المالك ينفذ اختبار تحمل 24 ساعة ثم المدة الأطول التي يختارها؛ لا تضع [x] بمجرد نجاح build أو قوله «تمام» عن خطوة غير محددة.
+- [x] المالك أكد اكتمال اختبار تحمل 24 ساعة؛ لا توجد تفاصيل قياس إضافية في السجل، لذلك لا تُستنتج أرقام uptime أو heap من هذا التأكيد.
 - [ ] تحديث findings/DECISIONS/ROADMAP، ثم RC تالٍ إذا تغير الكود، مع SHA-256 وcommit محدد؛ لا commercial tag أو غلق التطوير دون طلب المالك.
 
 **القبول:** كل P0/P1 مغلق بالدليل، وكل فرق حساب مفسر، وكل خطر متبقٍ له وصف وقرار، والتوافق والقياسات والاختبار الحقيقي متميزون عن نجاح الترجمة.
@@ -243,7 +243,7 @@ git diff --check
 | R5 تدقيق الذاكرة والبساطة | [~] | 2026-10-01: bounded malformed UTF-8 lookahead; dynamic String uses remain cold HTTP/boot paths; heap soak remains |
 | R6 loop والعرض والشبكة | [~] | 2026-10-02: loop catches up up to 60 elapsed seconds، واختبار `millis()` rollover يمر؛ hardware max-loop/OTA cases remain |
 | R7 الحفظ وAPI/OTA | [~] | 2026-10-02: strict OTA version/size parsing، ورفض حيّ للحدود/التكرار/البطاقات، وقراءة/حفظ ناجحان، وبناء/رفع release 4x1 بعد إصلاح BearSSL EC؛ OTA الإنتاج النهائي ينتظر عودة Wi‑Fi لإثبات الرد قبل إعادة التشغيل |
-| R8 المقارنة والتسليم | [~] | 2026-10-01: P10 و7-segment موحدان في الفهرس والطرق ومكة وDST ومصنف المرحلة؛ fixed-date parity نجح، وRTC/hardware remains |
+| R8 المقارنة والتسليم | [x] | 2026-10-02: P10 و7-segment موحدان في الفهرس والطرق ومكة وDST ومصنف المرحلة؛ fixed-date parity وnative/release وOTA/Android smoke واختبار التحمل اليدوي 24 ساعة مكتملة |
 
 قالب كل جلسة، أضفه أسفل الملف:
 
@@ -291,8 +291,9 @@ commit الدفعة (إن وُجد):
 `R7-005 | P1 | src/Masjed-P104.cpp:OtaSigningVerifier + tools/sign_ota.ps1 | BearSSL يخزن نقطة EC من PEM بطول 64 بايت، بينما raw verifier يحتاج SEC1 prefix؛ توقيع صحيح كان يرفض بـ verify | signed OTA debug أثبت hash/signature مطابقين محلياً ثم نجح بعد إضافة `0x04` مؤقتاً، وOTA production الحي كتب الصورة وأعاد التشغيل مع `rtc=1` | إضافة verifier صغير يضيف prefix أثناء التحقق فقط، وتغيير أداة التوقيع إلى `r||s` ثابت 64 بايت، وزيادة مهلة restart إلى 10 ثوانٍ، ثم استخدام نمط `NoDelay/flush/stop` الرسمي | native 32/32، release profiles 4/4 (RAM 37404/37416/37504/37532؛ Flash 426963/427103/428303/428443)، رفع COM5 وOTA production والتحقق بعد reboot ناجحان؛ عميل multipart ما زال يرى timeout/reset بدل body HTTP | signature/storage/reboot resolved; response delivery remains a documented P1 follow-up`.
 
 جلسة 2026-10-02: اختبارات الحافة الحية أعادت `422` لـ `f=121` و`lat=nan`، و`400` للمفتاح المكرر، ونجح no-op لـ `setEqama` و`setSettings` و`setCardSettings`. `health/selfTest/getData` أعادت `HTTP 200` و`rtc=1` و`display=1` و`profile=4x1`. بناء release الأربعة وnative (32/32) ناجحان. بعد رفع release 4x1 الأخير انقطع اتصال Wi‑Fi من الكمبيوتر؛ اختبار OTA الإنتاجي مؤجل حتى يعاد الاتصال بالشبكة.
-جلسة لاحقة 2026-10-02: بعد عودة AP، OTA الموقّع بحجم `432660` ثم `432592` ثم `432660` (حسب آخر build) تم قبوله وكتابته وإعادة التشغيل، وhealth بعد كل محاولة عاد `HTTP 200`, `rtc=1`, `profile=4x1`. إضافة `NoDelay/flush/delay/stop` غيّرت سلوك العميل إلى timeout/reset لكنها لم تُظهر body؛ لا يوجد فقد firmware أو boot loop. بناء release الأربعة الأخير ناجح. عولج Android في commit `9f6275f` بإرسال manifest داخل multipart وتأكيد نجاح OTA عبر health بعد اكتمال الرفع، ثم وُحّدت حزمة P104 الموقعة والـmanifest في `52ecb77`; اختبار 24 ساعة متبقٍ.
+جلسة لاحقة 2026-10-02: بعد عودة AP، OTA الموقّع بحجم `432660` ثم `432592` ثم `432660` (حسب آخر build) تم قبوله وكتابته وإعادة التشغيل، وhealth بعد كل محاولة عاد `HTTP 200`, `rtc=1`, `profile=4x1`. إضافة `NoDelay/flush/delay/stop` غيّرت سلوك العميل إلى timeout/reset لكنها لم تُظهر body؛ لا يوجد فقد firmware أو boot loop. بناء release الأربعة الأخير ناجح. عولج Android في commit `9f6275f` بإرسال manifest داخل multipart وتأكيد نجاح OTA عبر health بعد اكتمال الرفع، ثم وُحّدت حزمة P104 الموقعة والـmanifest في `52ecb77`; اختبار 24 ساعة أكد المالك اكتماله.
 اختبار تكاملي لاحق: أُرسل نفس `updateP104.bin` وmanifest الموجودين في Android assets إلى اللوحة عبر multipart، فحدث reset ثم عاد `/v2/health` بـ`HTTP 200`, `rtc=1`, `profile=4x1`, `heap=29296`. هذا يثبت مسار asset/firmware؛ إغلاق socket بدل body هو السلوك المتوقع الذي يعالجه Android بالـhealth probe.
+أكد المالك اكتمال اختبار التحمل اليدوي 24 ساعة؛ أُغلق بند R8 دون إضافة قياسات غير موثقة إلى السجل.
 
 ## 9. تعليمات الاستئناف المختصرة
 
