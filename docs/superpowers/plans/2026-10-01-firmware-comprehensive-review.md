@@ -292,6 +292,7 @@ commit الدفعة (إن وُجد):
 
 جلسة 2026-10-02: اختبارات الحافة الحية أعادت `422` لـ `f=121` و`lat=nan`، و`400` للمفتاح المكرر، ونجح no-op لـ `setEqama` و`setSettings` و`setCardSettings`. `health/selfTest/getData` أعادت `HTTP 200` و`rtc=1` و`display=1` و`profile=4x1`. بناء release الأربعة وnative (32/32) ناجحان. بعد رفع release 4x1 الأخير انقطع اتصال Wi‑Fi من الكمبيوتر؛ اختبار OTA الإنتاجي مؤجل حتى يعاد الاتصال بالشبكة.
 جلسة لاحقة 2026-10-02: بعد عودة AP، OTA الموقّع بحجم `432660` ثم `432592` ثم `432660` (حسب آخر build) تم قبوله وكتابته وإعادة التشغيل، وhealth بعد كل محاولة عاد `HTTP 200`, `rtc=1`, `profile=4x1`. إضافة `NoDelay/flush/delay/stop` غيّرت سلوك العميل إلى timeout/reset لكنها لم تُظهر body؛ لا يوجد فقد firmware أو boot loop. بناء release الأربعة الأخير ناجح. عولج Android في commit `9f6275f` بإرسال manifest داخل multipart وتأكيد نجاح OTA عبر health بعد اكتمال الرفع، ثم وُحّدت حزمة P104 الموقعة والـmanifest في `52ecb77`; اختبار 24 ساعة متبقٍ.
+اختبار تكاملي لاحق: أُرسل نفس `updateP104.bin` وmanifest الموجودين في Android assets إلى اللوحة عبر multipart، فحدث reset ثم عاد `/v2/health` بـ`HTTP 200`, `rtc=1`, `profile=4x1`, `heap=29296`. هذا يثبت مسار asset/firmware؛ إغلاق socket بدل body هو السلوك المتوقع الذي يعالجه Android بالـhealth probe.
 
 ## 9. تعليمات الاستئناف المختصرة
 
