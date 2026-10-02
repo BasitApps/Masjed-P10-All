@@ -242,7 +242,7 @@ git diff --check
 | R4 نوافذ الصلاة والإقامة | [~] | 2026-10-01: P10 classifier موجود، و7-segment يستخدم نفس الحدود وعبور منتصف الليل؛ 0..120/Friday/Sunrise hardware boundaries remain |
 | R5 تدقيق الذاكرة والبساطة | [~] | 2026-10-01: bounded malformed UTF-8 lookahead; dynamic String uses remain cold HTTP/boot paths; heap soak remains |
 | R6 loop والعرض والشبكة | [~] | 2026-10-01: loop catches up up to 60 elapsed seconds; hardware max-loop/OTA cases remain |
-| R7 الحفظ وAPI/OTA | [~] | 2026-10-01: strict OTA version/size parsing added; save/OTA fault matrix remains |
+| R7 الحفظ وAPI/OTA | [~] | 2026-10-02: strict OTA version/size parsing، واختبار حي لرفض الإقامة خارج الحد والإحداثيات NaN والمفتاح المكرر؛ مصفوفة الحفظ/OTA الكاملة ما زالت |
 | R8 المقارنة والتسليم | [~] | 2026-10-01: P10 و7-segment موحدان في الفهرس والطرق ومكة وDST ومصنف المرحلة؛ fixed-date parity نجح، وRTC/hardware remains |
 
 قالب كل جلسة، أضفه أسفل الملف:
@@ -285,6 +285,7 @@ commit الدفعة (إن وُجد):
 `R3-003 | P1 | P10 hardware: `/v2/health`, `startRTC()` | بعد الرفع ظهرت `rtc=0` مؤقتًا، ثم نجح ضبط الوقت عبر الرابط legacy بدون فصل الكهرباء | مسار `beginRTCDevice(true)` استعاد ناقل I2C، وصارت health `rtc=1` مع `syncAge=97`؛ لا عطل برمجي متكرر مثبت | live AP health + successful encoded `/setDateTime` + follow-up health؛ اختبار فصل/عودة RTC الفعلي ما زال مطلوبًا | recovered in software path; physical disconnect/reconnect verification pending`.
 `R5-001 | P1 | src/ArabicShaper.cpp:nextCp | malformed/truncated UTF-8 could inspect bytes past the NUL terminator and emit multiple replacements | API text could invoke undefined lookahead and noisy output | new truncated-sequence test failed before the fix (`'??'` vs `'?'`) | check continuation bytes before lookahead and consume one malformed sequence | shaper 11/11, native 27/27, release profiles 4/4 (RAM 37408/37428/37524/37544; Flash 426655/426795/427995/428135) | resolved; heap/long-message soak remains`.
 `R2-004 | P1 | P10/7-segment PrayerTimes contract | نفس التاريخ/الموقع كان معرضًا لاختلاف فهرس أو طريقة بين مساري العرض | وقت صلاة غير متطابق أو مغرب محسوب من Sunset | host harness شغّل نسختي المكتبة بنفس معاملات Cairo/Makkah/Karachi؛ النتائج السبع متطابقة، وCSV المرجعي حُدّث بالدقائق المقربة | أربع حالات، منها مكة angle وfixed-90، parity كامل؛ مرجع المسجد المحلي واختبار RTC/العتاد متبقيان | resolved for cross-firmware parity; external reference pending`.
+`R7-002 | P1 | src/Masjed-P104.cpp:beginV2/readIntArg/readFloatArg | مدخلات API غير صالحة قد تعدل الإعداد أو تمرر NaN/حدًا خارج النطاق | يجب رفض الطلب قبل الحفظ مع بقاء readback كما هو | اختبار حي على P10: `f=121` و`lat=nan` أعادا HTTP 422، والمفتاح المكرر أعاد HTTP 400؛ readback بقي `f=15`, `lat=31.0430`، وhealth ظل `rtc=1` | rejection path verified on hardware; malformed UTF-8/long body/EEPROM fault and OTA matrix remain`.
 
 ## 9. تعليمات الاستئناف المختصرة
 
