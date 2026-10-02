@@ -4,9 +4,10 @@
 > Keep the "Current step" line accurate at all times — it is the first thing
 > any new session reads.
 
-**Current step:** 2026-10-01: Owner uploaded RC1 and confirmed initial operation.
-Firmware development remains open. The active comprehensive prayer/iqama and
-code simplicity/performance review plan, including its progress log, is
+**Current step:** 2026-10-02: Owner declared the comprehensive firmware plan
+complete after the 24-hour manual soak. The plan and its progress log are now
+closed; later visual/manual findings should be opened as new work rather than
+reopening the completed plan. The plan is
 `docs/superpowers/plans/2026-10-01-firmware-comprehensive-review.md`.
 R0/R1 documentation is complete/partial and R2 has its first calculation fix:
 PrayerTimes method parameters are now explicit, with Makkah Isha selectable

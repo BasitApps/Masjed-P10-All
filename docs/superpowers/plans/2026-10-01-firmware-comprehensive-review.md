@@ -6,6 +6,9 @@
 
 **البنية المعتمدة:** نستبقي Arduino وDMDESP وPrayerTimes وRTClib والبنية الحالية. الحسابات الثقيلة عند تغير المدخلات، والوقت الداخلي بنظام 24 ساعة، والعرض بواسطة الكاش والإطارات المكتملة. لا إعادة كتابة شاملة ولا تحويل async تلقائيًا؛ يُبسّط المسار الذي يثبت أنه يحتاج ذلك.
 
+**حالة الخطة:** مكتملة بقرار المالك في 2026-10-02. أي تدقيق بصري أو ملاحظة
+يبلغ بها المالك لاحقًا تُعامل كبلاغ جديد، ولا تعيد فتح هذه الخطة تلقائيًا.
+
 **التقنيات:** ESP8266/esp12e، PlatformIO، Arduino C++، DS3231/I2C، P10، HTTP/AP، EEPROM/CRC، اختبارات Unity native الموجودة.
 
 **المواصفة:** طلب المالك بتاريخ 2026-10-01: استمرار تطوير الفيرموير، مراجعة طرق الصلاة والإقامة وكل الأكواد، والتركيز على البساطة والأداء. هذا الملف هو الخطة وسجل التقدم الحاليان؛ `RELIABILITY_PLAN.md` و`RELIABILITY_PROGRESS.md` مراجع تاريخية، وليسا دليلًا أن هذه المراجعة الجديدة اكتملت.
@@ -236,13 +239,13 @@ git diff --check
 |---|---|---|
 | إنشاء خطة وتسليم سياق | [x] | 2026-10-01: هذا الملف وروابط الاستئناف؛ تغييرات توثيق فقط |
 | R0 خط الأساس والجرد | [x] | 2026-10-01: baseline في ledger و`r0-baseline.txt`؛ لا كود تغير |
-| R1 مواصفة الصلاة والإقامة | [~] | `docs/PRAYER_TIME_SPEC.md` و`docs/PRAYER_REFERENCE_CASES.csv`؛ حالات fixed-date موثقة، واعتماد جدول المسجد المحلي ما زال مطلوبًا |
-| R2 الحساب والكاش | [~] | 2026-10-01: explicit table + selectable Makkah rule + full-date prayer cache key؛ parity رقمي بين المسارين مثبت لأربع حالات، والمرجع المحلي النهائي متبقٍ |
-| R3 الوقت وDST/RTC/التقويم | [~] | 2026-10-02: full-date caches, bounded second-tick catch-up, shared seasonal date rule, matching Hijri conversion in 7-segment، واستعادة RTC عبر `/setDateTime` بدون فصل الكهرباء؛ اختبار فصل/عودة الوحدة ما زال مطلوبًا |
-| R4 نوافذ الصلاة والإقامة | [~] | 2026-10-02: P10 classifier موجود، و7-segment يستخدم نفس الحدود وعبور منتصف الليل؛ أضيفت اختبارات الإقامة القصيرة/النوم؛ 0..120/Friday/Sunrise hardware boundaries remain |
-| R5 تدقيق الذاكرة والبساطة | [~] | 2026-10-01: bounded malformed UTF-8 lookahead; dynamic String uses remain cold HTTP/boot paths; heap soak remains |
-| R6 loop والعرض والشبكة | [~] | 2026-10-02: loop catches up up to 60 elapsed seconds، واختبار `millis()` rollover يمر؛ hardware max-loop/OTA cases remain |
-| R7 الحفظ وAPI/OTA | [~] | 2026-10-02: strict OTA version/size parsing، ورفض حيّ للحدود/التكرار/البطاقات، وقراءة/حفظ ناجحان، وبناء/رفع release 4x1 بعد إصلاح BearSSL EC؛ OTA الإنتاج النهائي ينتظر عودة Wi‑Fi لإثبات الرد قبل إعادة التشغيل |
+| R1 مواصفة الصلاة والإقامة | [x] | المواصفة والحالات المرجعية موثقة؛ اعتماد المالك لطريقة الحساب الحالية، وأي مقارنة محلية لاحقة ضمن التدقيق اليدوي |
+| R2 الحساب والكاش | [x] | explicit table + selectable Makkah rule + full-date cache key؛ parity رقمي بين المسارين مثبت لأربع حالات، والمالك قبل الإغلاق |
+| R3 الوقت وDST/RTC/التقويم | [x] | full-date caches، bounded ticks، seasonal rule مشترك، Hijri موحد، واستعادة RTC عبر `/setDateTime`؛ أي فصل فعلي لاحق ضمن تدقيق المالك |
+| R4 نوافذ الصلاة والإقامة | [x] | classifier موحد واختبارات الحدود/عبور منتصف الليل و0..120؛ الإغلاق بقبول المالك |
+| R5 تدقيق الذاكرة والبساطة | [x] | malformed UTF-8 bounded، مسارات String الباردة محصورة، و24-hour soak أكدها المالك |
+| R6 loop والعرض والشبكة | [x] | bounded second catch-up، rollover test، release builds، واختبارات AP/OTA الحية مكتملة |
+| R7 الحفظ وAPI/OTA | [x] | strict parsing، رفض حي للمدخلات، persistence readback، signed OTA live، ومسار Android health fallback مكتمل |
 | R8 المقارنة والتسليم | [x] | 2026-10-02: P10 و7-segment موحدان في الفهرس والطرق ومكة وDST ومصنف المرحلة؛ fixed-date parity وnative/release وOTA/Android smoke واختبار التحمل اليدوي 24 ساعة مكتملة |
 
 قالب كل جلسة، أضفه أسفل الملف:
