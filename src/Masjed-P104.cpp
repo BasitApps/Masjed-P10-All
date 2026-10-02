@@ -2329,12 +2329,13 @@ void handleOTAComplete()
       endV2();
       otaV2Upload = false;
       otaSucceeded = false;
+      sysFlags.setUpdate(false);
       otaSuccessPendingRestart = true;
       otaSuccessFrameReady = false;
       dispState.setStopCards(true);
       dmd.resume();
       sysFlags.setRestart(true);
-      sysFlags.restartAt = millis() + MS_RESTART_DELAY;
+      sysFlags.restartAt = millis() + MS_OTA_RESTART_DELAY;
     }
     else
     {
@@ -2360,7 +2361,7 @@ void handleOTAComplete()
     dispState.setStopCards(true);
     dmd.resume();
     sysFlags.setRestart(true);
-    sysFlags.restartAt = millis() + MS_RESTART_DELAY;
+    sysFlags.restartAt = millis() + MS_OTA_RESTART_DELAY;
   }
   else
   {
