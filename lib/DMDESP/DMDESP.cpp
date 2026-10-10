@@ -400,6 +400,10 @@ void DMDESP::swapBuffers() {
  * \sa swapBuffers(), setDoubleBuffer()
  */
 void DMDESP::swapBuffersAndCopy() {
+  // No extra framebuffer or hash: compare the existing front/back buffers.
+  // Hardware scanning must still continue even when the image is unchanged.
+  if (_doubleBuffer && !memcmp(fb, displayfb, _stride * _height))
+    return;
   swapBuffers();
   if (_doubleBuffer)
     memcpy((void *)fb, (void *)displayfb, _stride * _height);
@@ -455,12 +459,17 @@ void DMDESP::loop() {
 
 void DMDESP::pause() {
   _paused = true;
+  // OTA must not keep scheduling display callbacks while writing flash.
+  os_timer_disarm(&dispTimer);
   tickOccured = false;
   pinMode(DMD_PIN_OUTPUT_ENABLE, OUTPUT);
   digitalWrite(DMD_PIN_OUTPUT_ENABLE, HIGH);
 }
 
 void DMDESP::resume() {
+  if (!_paused)
+    return;
+  os_timer_arm_us(&dispTimer, DMDESP_REFRESH_US, true);
   _paused = false;
   tickOccured = true;
 }

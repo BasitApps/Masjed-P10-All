@@ -4,6 +4,7 @@
 #include "constants.h"
 #include "PrayerIndex.h"
 #include "DisplayProfile.h"
+#include "ClockSettingsContract.h"
 #include <Arduino.h>
 
 // ============ PROGMEM Data ============
@@ -21,6 +22,7 @@ struct PrayerCache {
   int16_t lastYear;
   int8_t lastMonth;
   int8_t lastDay;
+  int8_t timeZone;
   bool valid;
 };
 
@@ -34,7 +36,8 @@ struct SystemFlags {
     F_SPLASH = 0x02,
     F_RESTART = 0x04,
     F_TEST = 0x08,
-    F_RTC_OK = 0x10
+    F_RTC_OK = 0x10,
+    F_RTC_TIME_VALID = 0x20
   };
 
   bool updateNow() const { return bits & F_UPDATE; }
@@ -42,12 +45,14 @@ struct SystemFlags {
   bool restartNow() const { return bits & F_RESTART; }
   bool testMode() const { return bits & F_TEST; }
   bool rtcOk() const { return bits & F_RTC_OK; }
+  bool rtcTimeValid() const { return bits & F_RTC_TIME_VALID; }
 
   void setUpdate(bool v) { v ? (bits |= F_UPDATE) : (bits &= ~F_UPDATE); }
   void setSplash(bool v) { v ? (bits |= F_SPLASH) : (bits &= ~F_SPLASH); }
   void setRestart(bool v) { v ? (bits |= F_RESTART) : (bits &= ~F_RESTART); }
   void setTest(bool v) { v ? (bits |= F_TEST) : (bits &= ~F_TEST); }
   void setRtc(bool v) { v ? (bits |= F_RTC_OK) : (bits &= ~F_RTC_OK); }
+  void setRtcTimeValid(bool v) { v ? (bits |= F_RTC_TIME_VALID) : (bits &= ~F_RTC_TIME_VALID); }
 };
 
 // ============ Display State ============
@@ -88,11 +93,11 @@ struct DisplayParams {
   bool isSmall;
 };
 
-// ============ Configuration (EEPROM) ============
+// ============ Configuration (LittleFS record) ============
 struct Configuration {
   uint16_t eepromVersion;
-  int8_t calcMethod, wayMethod, dst, hijriDayCorrection, summerTime;
-  int8_t eqamaFajr, eqamaShrouq, eqamaZohr, eqamaAsr, eqamaMagrb, eqamaEsha;
+  int8_t prayerCalculationMethod, asrMethod, timezoneOffset, hijriDayCorrection, daylightSavingTime;
+  int8_t eqamaFajr, eqamaShrouq, eqamaZohr, eqamaAsr, eqamaMaghrib, eqamaEsha;
   int8_t sleepGomaaTime, sleepPrayerTime;
   float latitude, longitude;
   int16_t country, government;
@@ -100,7 +105,7 @@ struct Configuration {
   uint8_t brightness, scrollingSpeed, isSmallFont;
   int8_t language;
   int16_t powerSaveAfterIsha, powerSaveBeforeFajr;
-  int16_t city;
+  int32_t city;
   char masjedName[100];
   char message[240];
   char apPassword[64];
@@ -110,40 +115,41 @@ struct Configuration {
     uint8_t hour24; // Display only; RTC/prayer arithmetic always uses 24h.
 
   bool isValid() const {
-    const bool eqamaValid =
-        eqamaFajr >= 0 && eqamaFajr <= 120 && eqamaShrouq >= 0 &&
-        eqamaShrouq <= 120 && eqamaZohr >= 0 && eqamaZohr <= 120 &&
-        eqamaAsr >= 0 && eqamaAsr <= 120 && eqamaMagrb >= 0 &&
-        eqamaMagrb <= 120 && eqamaEsha >= 0 && eqamaEsha <= 120;
-    return eepromVersion == EEPROM_VERSION && isfinite(latitude) &&
-           latitude >= -90.0f && latitude <= 90.0f && isfinite(longitude) &&
-           longitude >= -180.0f && longitude <= 180.0f && calcMethod >= 0 &&
-           calcMethod <= 4 && wayMethod >= 0 && wayMethod <= 1 && dst >= -12 &&
-           dst <= 14 && hijriDayCorrection >= -3 && hijriDayCorrection <= 3 &&
-           summerTime >= 0 && summerTime <= 1 && eqamaValid &&
-           sleepGomaaTime >= 0 && sleepGomaaTime <= 120 &&
-           sleepPrayerTime >= 0 && sleepPrayerTime <= 120 && isSmallFont <= 1 &&
+    return eepromVersion == EEPROM_VERSION &&
+           ClockSettings::valid(*this, powerSaveAfterIsha, powerSaveBeforeFajr) &&
+           isSmallFont <= 1 &&
            scrollingSpeed <= 5 && (language == LANG_AR || language == LANG_EN) &&
-           powerSaveAfterIsha >= 0 && powerSaveAfterIsha <= 720 &&
-           powerSaveBeforeFajr >= 0 && powerSaveBeforeFajr <= 720 &&
+           memchr(masjedName, '\0', sizeof(masjedName)) != nullptr &&
+           memchr(message, '\0', sizeof(message)) != nullptr &&
            memchr(apPassword, '\0', sizeof(apPassword)) != nullptr &&
            strlen(apPassword) >= 8 && strlen(apPassword) <= 63 &&
-             mustChangePassword <= 1 && fontFamily <= 2 && digitStyle <= 1 && hour24 <= 1;
+             mustChangePassword <= 1 && fontFamily <= 2 && digitStyle <= 1;
+  }
+
+  bool migrateCityId()
+  {
+    if (eepromVersion != 6)
+      return false;
+    // v6 used two bytes for city and two tail-padding bytes. Move the text tail
+    // into that padding, preserving the record size and every existing field.
+    static_assert(sizeof(Configuration) == offsetof(Configuration, hour24) + 1,
+                  "City migration requires the existing record layout");
+    int16_t oldCity;
+    memcpy(&oldCity, &city, sizeof(oldCity));
+    memmove(masjedName, reinterpret_cast<char *>(&city) + sizeof(oldCity),
+            offsetof(Configuration, hour24) + 1 - offsetof(Configuration, masjedName));
+    city = oldCity;
+    eepromVersion = EEPROM_VERSION;
+    return true;
   }
 
   void setDefaults() {
     eepromVersion = EEPROM_VERSION;
-    calcMethod = wayMethod = dst = hijriDayCorrection = summerTime = 0;
-    eqamaFajr = eqamaZohr = eqamaAsr = eqamaMagrb = eqamaEsha = 0;
-    eqamaShrouq = 10;
-    sleepGomaaTime = sleepPrayerTime = 0;
-    latitude = longitude = 10.05f;
-    country = government = password = wifiPassword = 0;
+    ClockSettings::setDefaults(*this, powerSaveAfterIsha, powerSaveBeforeFajr);
+    password = wifiPassword = 0;
     brightness = scrollingSpeed = 1;
     isSmallFont = 0;
     language = LANG_AR;
-    powerSaveAfterIsha = powerSaveBeforeFajr = 30;
-    city = 0;
     masjedName[0] = message[0] = '0';
     masjedName[1] = message[1] = '\0';
     memcpy(apPassword, AP_PASSWORD, sizeof(AP_PASSWORD));
@@ -191,7 +197,7 @@ struct EqamaCache {
 
 // ============ Global Variable Definitions ============
 // Note: These use 'inline' (C++17) to avoid multiple definition errors
-inline PrayerCache prayerCache = {{0}, INT16_MIN, INT16_MIN, -1, -1, -1, false};
+inline PrayerCache prayerCache = {{0}, INT16_MIN, INT16_MIN, -1, -1, -1, 0, false};
 inline SystemFlags sysFlags = {0x02, 0};
 inline DisplayState dispState = {{0}, {0}, 0, 50, 1, 0x01};
 inline TimeData timeData = {0, 1400, 0, 0, 0, 0, 0, 0, 1, 1};
@@ -201,6 +207,12 @@ inline DisplayParams dispParams = {DISPLAY_PROFILE.smallTextY,
 inline Configuration config;
 // Stored separately from Configuration to preserve the v6 EEPROM layout.
 inline uint8_t makkahIshaMode = 0; // 0: calculation method, 1: fixed 90 min
+// Stored in the existing prayer-preferences sidecar (not Configuration) so
+// enabling this option never invalidates the established EEPROM layout.
+inline bool ultraPowerSave = false;
+// Stored in a small reserved EEPROM slot; range 0..125 matches the P10
+// brightness control exposed by the Android app.
+inline uint8_t powerSaveBrightness = 1;
 inline EqamaCache eqamaCache = {{-1, -1, -1, -1, -1, -1, -1}, -1};
 
 inline int16_t hijriLastYear = -1;
@@ -208,13 +220,15 @@ inline int8_t hijriLastMonth = -1;
 inline int8_t hijriLastDay = -1;
 inline uint32_t lastSecondMs = 0;
 inline unsigned long lastRtcSyncMs = 0;
+inline bool rtcSeasonalAdjustment = false;
+inline bool rtcAdjustmentRequired = false; // RTC/config transaction could not be restored.
 inline char resetReason[40] = "unknown";
 inline char resetInfo[96] = "unknown";
 inline int8_t cachedTemp = -99;
 inline char fmtBuf[BUF_SMALL];
 
 // String caches (sized for UTF-8 Arabic names)
-inline char cachedDayName[16] = {0};
+inline char cachedDayName[17] = {0};
 inline int8_t cachedDayIndex = -1;
 inline char cachedMonthName[26] = {0};
 inline int8_t cachedMonthIndex = -1;
@@ -231,7 +245,7 @@ inline void refreshEqamaCache() {
   eqamaCache.times[2] = config.eqamaZohr;
   eqamaCache.times[3] = config.eqamaAsr;
   eqamaCache.times[4] = 0;
-  eqamaCache.times[5] = config.eqamaMagrb;
+  eqamaCache.times[5] = config.eqamaMaghrib;
   eqamaCache.times[6] = config.eqamaEsha;
   eqamaCache.sleepTime = config.sleepPrayerTime;
 }

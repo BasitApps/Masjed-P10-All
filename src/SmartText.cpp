@@ -56,7 +56,10 @@ void SmartText::drawTextFast(int x, int y, const char *str) {
     const unsigned char next = static_cast<unsigned char>(str[1]);
     if ((rightToLeft && needsEnglishGap(current, next)) ||
         (!rightToLeft && asciiDigit(current) && asciiDigit(next)))
+    {
+      disp.drawFilledRect(x, areaY, x, areaY + areaH - 1, Bitmap::Black);
       ++x;
+    }
     ++str;
     if (++charCount >= 8) { // Yield every 8 characters
       yield();

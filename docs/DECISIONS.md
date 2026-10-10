@@ -682,3 +682,180 @@ the official `NoDelay/flush/delay/stop` response sequence; the Android client
 should confirm a closed OTA request with a bounded post-reboot health check
 instead of declaring the update failed. No change is made to legacy update
 compatibility until that client behavior is verified.
+
+## D58 — Keep one commercial API and one OTA path (2026-10-02)
+
+The product contract is the compact root-path POST API, `GET /checkUpdate`, and
+`POST /updateMain`. Old blurred GET handlers and the unused signed `/v2/update`
+verifier were removed from both firmware paths. Sold devices are migrated by
+the Android update check before normal control requests, so retaining dead
+handlers only increased flash size and duplicated behavior. The AP password
+and the existing request validation remain the access and safety boundaries.
+
+## D59 — Suspend DMD's SDK timer during OTA (experiment, 2026-10-05)
+
+Owner approved one isolated test of the intermittent early-OTA hang.
+Previously DMD pause blanked output and skipped scanning but left the
+100-microsecond SDK timer armed. Pause now disarms that timer; resume
+rearms the same callback at the same interval only when paused. Existing
+OTA success/failure/abort paths already call resume. No refresh rate,
+transport, update version, or EEPROM change is included.
+
+This small DMDESP core edit is necessary to test complete suspension using
+its private timer without introducing application-level access to library
+internals. It is NOT a proven diagnosis or fix; if hangs recur, preserve
+the failure evidence before manual power recovery and reassess.
+
+Outcome recorded 2026-10-05: the owner's 06:18 serial log reproduced
+the early reboot using the new 397888-byte image. Timer suspension alone
+does not fix the fault; this decision remains an experimental lifecycle
+change, not a verified cause/remedy. No further diagnostic DMD changes were
+approved in that turn.
+
+### D60 — Unchanged frames and one night window (2026-10-05)
+
+Owner approved the simple completion batch; dual-copy storage was declined.
+Preserve existing EEPROM/LittleFS layouts and unchanged-write guards.
+`swapBuffersAndCopy()` compares the existing buffers before swapping/copying;
+no extra P10 RAM buffer or probabilistic hash. Necessary DMD core exception:
+front/back buffers are private; pixel iteration or another full-frame copy
+would cost more. Panel multiplex scanning continues for static frames.
+
+7-segment TA6932 tracks 16 published bytes plus control state per chip;
+unchanged images are not resent, brightness/on-off-only changes issue one
+control command. `reset()` force-sends and resynchronizes the cache. This is
+an explicitly documented local driver optimization, not an OTA fault remedy.
+
+Both firmware contracts now use identical normalized `[start,end)` night
+windows. Positive after-Isha/before-Fajr offsets enable the window; zero
+retains the established disabled convention. Equal boundaries disable it
+instead of hiding the clock all day. Removed dead divergent night arithmetic
+from 7-segment Checking; dimming and ultra mode use the same helper.
+
+OTA 98 marks end-of-upload/finalization; 99 remains after successful
+Update.end. Android 100 requires HTTP UpdateOk or that peer acknowledgement,
+then shows the existing five-second restart grace period, NOT a post-boot
+verification. Early reset/power/ground investigation remains unresolved.
+
+### D61 — Always-available protected AP (2026-10-05)
+
+Owner approved removing the 7-segment ten-minute AP shutdown, without a new
+setting or changing credentials. Removed its timer, flag and loop branch in
+Masjed_TA_All_v2/src/Masjed_TA.cpp. Both M73/M73s follow the same policy as
+P10, including night dimming and ultra display mode. P10 already has no
+scheduled shutdown, so no P10 source change is needed.
+`closeAllWifiServices()` is still called in setup before AP/server startup;
+keep that initialization cleanup, not a runtime AP-expiry mechanism.
+No EEPROM/LittleFS/version/Android UI changes. Hardware/reset fault remains
+separate; always-on AP does not prove that issue fixed.
+
+### D62 — Exact OTA size and actionable failures (2026-10-05)
+
+Owner approved proposals 1 and 3 only, across P10, M73/M73s and Android.
+No MD5/signatures, new transport, polling, auto-retry or storage layout change.
+`size` is mandatory positive decimal uint32 (checked for overflow), bounded
+by the available sketch staging space. Update.begin receives this exact size.
+Each accepted write increments a received-byte counter; excess chunks are
+rejected before writing, missing bytes are rejected at file end. Only the
+completed multipart request may call Update.end(false), then send p=99 and
+UpdateOk. A completed file part alone is NOT installation acceptance.
+
+The installed ESP8266 core 3.1.2 has no public abort method. Cleanup forces
+its write bounds error via remaining()+1 before end(); the core checks the
+length before reading the one-byte argument. This avoids accidentally
+committing an otherwise full image when its request is aborted/malformed.
+Re-check this contract before changing the ESP8266 core. No vendored library
+edits were needed. Async 7-segment tracks the owning request, rejects another
+upload without replacing its state, and releases staging memory on disconnect.
+
+Both clocks return UpdateError:<code>. Android translates size, incomplete,
+oversize, space, memory, write, image, token, busy, aborted and begin/end into
+Arabic/English messages. Partial-send socket failures identify interrupted
+upload; full-send failures without firmware ACK remain unconfirmed and direct
+the owner to the normal version check. Sent bytes alone never imply success.
+Existing five-second restart grace, actual versions and owner's test target
+remain unchanged. This work is not a fix for the intermittent early reset.
+
+### D63 — Authoritative RTC and prayer event correctness (2026-10-07)
+
+Owner authorized comprehensive-review repairs; batch 1 covers P10 R01-R10/R19.
+Keep the approved PrayerTimes formula, base-date seasonal policy, EEPROM v6
+layout and commercial API. Software ticks are pure; one authoritative RTC
+sample rebases the deadline after catch-up. Compare full dates/minutes for
+cache/window changes. Prayer offset follows the RTC-applied seasonal state;
+reject spring-gap local inputs that cannot round-trip under the existing rule.
+
+Read bounded DS3231 registers/status directly through Wire to verify transport,
+BCD, calendar ranges and OSF before trusting time. Validate writes with a
+two-second readback tolerance; restore previous time on transaction failure.
+If restoration is uncertain, one runtime-only flag requires a successful
+manual time/config transaction. Transient invalid reads remain retryable;
+night display cannot override invalid-time feedback. This is not atomic
+RTC/Flash persistence: EEPROM staging/commit coherence remains R18.
+
+Use existing EventIndices/phase helpers for Friday/Maghrib and long iqama.
+Nonfinite library outputs become unavailable sentinels, never clock values.
+Priority text is serviced each frame; last-minute countdown fits the selected
+geometry without new fonts or render buffers. Preserve explicit sunrise zero
+in v6; default ten and historical migrations remain unchanged.
+
+No version bump, hardware upload, Android asset publication or 7-segment
+source change in this batch. No claim of fixing intermittent OTA resets.
+
+### D64 — Local parser hardening and bounded persistence (2026-10-07)
+
+Keep the compact root POST API and the installed ESP8266 core. The project uses
+a build-local overlay for the pinned Core 3.1.2 parser; it never edits `lib/`
+or the shared SDK. Multipart reads have idle/total deadlines, strict trailers,
+32-part and retained-data limits, stale-plain reset, nothrow allocations and
+abort cleanup. EEPROM keeps layout/version 6: stage into the existing mirror,
+commit once, restore the prior mirror on failure, and publish runtime values
+only after success. No A/B image or new filesystem is justified by the current
+product scope.
+
+### D65 — Display invalidation and release identity (2026-10-07)
+
+Use one display revision invalidation path after a full clear; do not add a
+second framebuffer or an async display layer. Release tooling must receive an
+explicit version/tag, reject an existing manifest, and require the actual
+Android project path. These are build/release guardrails only; Android assets,
+7-segment code, hardware upload and commercial version publication remain
+separate owner decisions.
+
+### D66 — Cooperative OTA writes without a progress peer (2026-10-07)
+
+After each accepted HTTP upload chunk, call yield() rather than watchdog-only
+feeding. Sending UDP progress already invokes optimistic_yield in the installed
+core; upload service must not depend on the existence of that peer or DEBUG
+serial output. Keep native Updater buffering, exact-size/finalization checks,
+and the five-second restart grace. No new library, delay or polling.
+Three short release OTA attempts without a progress peer passed after this
+change; RTC stayed valid with the owner's battery fitted. This observed
+improvement does not establish the physical cause of every previous reset.
+
+### D67 — Full location identifiers and remaining parity (2026-10-09)
+
+Use signed 32-bit storage and accept nonnegative city IDs through INT32_MAX,
+matching existing Android catalog IDs without truncation or database renumbering.
+P10 configuration version becomes 7 (not firmware release version). Unlike old
+reset-on-version changes, valid v6 LittleFS records migrate in RAM only after
+the original CRC passes. Moving the tail right two bytes consumes existing
+padding, so record length and all existing fields remain intact. The next normal
+save persists v7; boot itself does not write. Native real-struct fixtures verify
+passwords, texts, cards, font/digit/hour choices and corruption rejection.
+Downgrading to a v6-only firmware after a v7 save is not supported; its old reader
+would reject the new record. Do not publish a rollback without a matching migration.
+
+Shared factory iqama values are Android's existing `{15,10,10,10,8,10}`. Both use
+timezone 2, night offsets 30/30 and unconfigured placeholder coordinates
+10.05/10.05; users must select their actual location. These affect factory reset
+or first boot only. M73 previously used Fajr 13, 55.05/55.25 and zero offsets;
+valid saved values are retained. Rendering, audio, fonts and device-specific
+brightness remain separate; no new dependency or generic runtime layer.
+
+Keep a shared 512-byte POST buffer, consistent error statuses and literal v=2.
+Six date/time fields and both coordinates are required. Full committed config
+validation is reused for M73 selfTest. Five-second restart grace is shared and
+M73 handles millis rollover. Its current synchronous OTA callback yields after
+accepted writes, not merely feeding WDT; this is not proof of a hardware reset fix.
+M71 is explicitly deferred to its own plan and must never receive an M73 image.

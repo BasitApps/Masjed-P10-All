@@ -56,9 +56,10 @@ static const char AZKAR_AFTER2_EN[] PROGMEM = "Prayer supplications";
 
 // ---- Splash / system ----
 static const char SPLASH_TITLE[] PROGMEM = "بسيط للبرمجيات";
-static const char RTC_FAIL_TEXT[] PROGMEM = "اضبط الوقت";
+static const char RTC_DISCONNECTED_TEXT[] PROGMEM = "RTC E1";
+static const char RTC_TIME_INVALID_TEXT_AR[] PROGMEM = "اضبط الوقت";
+static const char RTC_TIME_INVALID_TEXT_EN[] PROGMEM = "TIME E2";
 static const char SPLASH_TITLE_EN[] PROGMEM = "Basit Apps";
-static const char RTC_FAIL_TEXT_EN[] PROGMEM = "Set Time";
 static const char CARD_RAMADAN_EN[] PROGMEM = "%d days until Ramadan";
 static const char CARD_TEMP_EN[] PROGMEM = "Temperature %d degrees";
 static const char OTA_SUCCESS_AR[] PROGMEM = "تم التحديث";
@@ -68,12 +69,11 @@ static const char OTA_PROGRESS_EN[] PROGMEM = "Update";
 static const char OTA_SUCCESS_SHORT_AR[] PROGMEM = "تم";
 static const char OTA_SUCCESS_SECOND_AR[] PROGMEM = "التحديث";
 
-// ---- Prayer names (index: 0 Fajr, 1 Sunrise, 2 Dhuhr, 3 Asr, 4 Maghrib,
-//      5 unused, 6 Isha) ----
+// ---- PrayerTimes indices: 4 Sunset (not displayed), 5 Maghrib ----
 static const char PROGMEM PRAYER_NAME_AR[][16] = {
-    "الفجر", "الشروق", "الظهر", "العصر", "المغرب", "", "العشاء"};
+    "الفجر", "الشروق", "الظهر", "العصر", "", "المغرب", "العشاء"};
 static const char PROGMEM PRAYER_NAME_EN[][10] = {
-    "Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "", "Isha"};
+    "Fajr", "Sunrise", "Dhuhr", "Asr", "", "Maghrib", "Isha"};
 
 // ---- Day names ----
 static const char PROGMEM DAY_NAME_AR[][20] = {
@@ -102,14 +102,14 @@ static const char PROGMEM HIJRI_MONTH_SHORT_EN[][10] = {
 // ---- Inline message fragments ----
 static const char MSG_AZAN[] PROGMEM = "أذان %s";
 static const char MSG_EQAMA_IN[] PROGMEM = "الإقامة بعد %d دقيقة";
-static const char MSG_EQAMA_SEC[] PROGMEM = "الإقامة بعد %d ثانية";
+static const char MSG_EQAMA_SEC[] PROGMEM = "الإقامة %02d";
 static const char MSG_EQAMA[] PROGMEM = "الإقامة";
 static const char MSG_JUMAA[] PROGMEM = "الجمعة";
 static const char MSG_PHONE_SILENT_AR[] PROGMEM = "الهاتف صامت";
 static const char MSG_PHONE_SILENT_EN[] PROGMEM = "Phone Silent";
 static const char MSG_AZAN_EN[] PROGMEM = "Adhan %s";
 static const char MSG_EQAMA_IN_EN[] PROGMEM = "Iqama in %d minutes";
-static const char MSG_EQAMA_SEC_EN[] PROGMEM = "Iqama in %d seconds";
+static const char MSG_EQAMA_SEC_EN[] PROGMEM = "Iqama %02d";
 static const char MSG_EQAMA_EN[] PROGMEM = "Iqama";
 static const char MSG_JUMAA_EN[] PROGMEM = "Jumuah";
 

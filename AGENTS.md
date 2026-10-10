@@ -1,6 +1,64 @@
 # AGENTS.md — Project Guide for AI Assistants
 
-> **Active handoff (2026-10-01):** Start with
+> **Latest unification handoff (2026-10-09):** Read the latest section of
+> `docs/ROADMAP.md` and `docs/FIRMWARE_REVIEW_2026-10-07.md` first. P10/M73 now
+> share five byte-identical core headers; current M73 HTTP is synchronous.
+> City IDs are int32_t; P10 raw v6 records migrate after CRC to config version 7
+> without reset or boot write (not a firmware release-version bump). Common
+> factory defaults, body/error validation and five-second restart grace align.
+> M71 is explicitly DEFERRED in its own plan; never flash an M73 image to it.
+> This batch does not upload hardware, publish Android BINs or build an APK.
+> Physical save/RTC/OTA and intermittent-reset validation remain pending.
+>
+> **Current review handoff (2026-10-07):** Start with
+> `docs/FIRMWARE_REVIEW_2026-10-07.md`. The P10 source audit and four release
+> builds are complete; batches 1–3 are implemented and locally verified.
+> Preserve owner changes, the approved prayer formula and simple root POST API.
+> P10 4×1 release was uploaded on COM5 and flash hash verified. Native Windows
+> WlanConnect connected the saved profile; initial API/RTC/selfTest passed.
+> One release OTA failed with spontaneous reset; one USB-monitored DEBUG OTA
+> succeeded with UpdateOk and Software/System restart. Release was restored.
+> Owner confirmed RTC battery removed: lost-power/invalid-time afterward is
+> expected if RTC supply is interrupted; do not treat it as a detection defect.
+> Owner then fitted the battery and set time. WRITE now calls yield each chunk
+> rather than only wdtFeed; three release OTA attempts without UDP peer passed
+> with UpdateOk, normal restart, valid RTC and unchanged settings. This latest
+> candidate is on the board; see report for BIN SHA and short-test limitations.
+> Follow-up publication gate FAILED: attempted OTA of version 13 with UDP peer
+> reset at progress 1 (ROM rst cause:1, health Power On); board remained rc4/12,
+> RTC/time/settings valid. Thus per-chunk yield is NOT a complete fix for the
+> intermittent reset. Temporary version changes were reverted; Android BIN was
+> not replaced. Inspect 3.3V supply and RST/EN physically before more speculative
+> fixes/publication. Owner subsequently reported phone OTA success and confirmed
+> programmer TX/RX/GND/DTR/RTS; need clarify whether it remained connected during
+> that success. Android phone authorized via ADB; no prior OTA log available.
+> Current health reports normal software restart/RTC connected, but no timeValid
+> field (do not assume same BIN); Android asset remains older398304B, owner map
+> now13 (preserve). Do not open COM5 during the next controlled phone comparison.
+> Owner confirmed programmer remained connected. Network-only Windows OTA of
+> older Android asset failed at p=1 with Hardware Watchdog (different from the
+> previous Power On). Restored reviewed398048B via USB115200/hash verified;
+> same reviewed BIN OTA then passed with UDP progress0..99/HTTP200 UpdateOk
+> without opening COM5; final RTC/time/settings valid and normal software reboot.
+> Reviewed BIN/manifest now copied to Android for owner tests (SHA10d58801…,
+> actual version12). Owner map13 is intentionally forced testing, NOT release13.
+> No APK built/installed; owner must rerun Android Studio to replace old assets.
+> Intermittent-reset proof, final version publication, 7-segment and soak pending.
+> First 7-segment RTC/API parity batch is now implemented in its own repository:
+> exact DS3231/OSF/BCD/calendar reads, verified write+config rollback with runtime
+> uncertainty latch, same base-date DST offset, NaN prayer dashes, Friday azan
+> and no duplicate date toggle. Real-source checks24/24, existing checks3/3 and
+> ta73/ta73s builds pass. No upload/Android assets/version change for 7-segment.
+> Next bounded batch: remaining 7-segment API readers and settings failure paths;
+> physical RTC/OTA validation remains pending. Do not copy P10 yield/parser
+> overlay into async callbacks blindly. Read report's latest section for limits.
+> Follow-up API batch now stages Eqama/location/settings/password in a candidate
+> and adds a small v2 request lock for the shared async body/response buffers.
+> ta73 built successfully and was uploaded to the connected M73 board; UpdateOk,
+> AP return and getData/profile=7seg were confirmed. No M73s/P10/Android asset
+> publication. Android's raw octet-stream POST is the tested body contract.
+>
+> **Historical handoff (2026-10-01; plan closed 2026-10-02):**
 > `docs/superpowers/plans/2026-10-01-firmware-comprehensive-review.md` for the
 > comprehensive prayer/iqama/correctness/performance review and its progress log.
 > RC1 was uploaded and initially confirmed working by the owner; development
@@ -34,7 +92,6 @@ WiFi AP REST API. OTA firmware updates supported.
 | Build firmware | `pio run` (or VSCode PlatformIO: Build) |
 | Upload (serial) | `pio run -t upload` |
 | Serial monitor | `pio device monitor` (115200) |
-| Native unit tests | `pio test -e native` (added in Phase 3 of Arabic project) |
 | Font tool | `python tools/gen_font.py --help` (Phase 1 deliverable) |
 
 - Board: `esp12e`, platform `espressif8266`. See `platformio.ini`.
@@ -48,16 +105,15 @@ src/
   Masjed-P104.cpp   Main firmware: setup/loop, cards, prayer windows, web API, OTA
   globals.h         Data structs: Configuration (EEPROM), caches, TimeData...
   constants.h       Timing/display constants, buffers sizes, DEBUG macros
-  texts.h           All fixed strings (currently legacy-encoded; being migrated to UTF-8)
+  texts.h           All fixed strings (UTF-8)
   SmartText.{h,cpp} Flicker-free text engine on top of DMDESP (scroll + flash)
-  ArabicShaper.*    (planned) UTF-8 -> shaped glyph codes engine
+  ArabicShaper.*    UTF-8 -> shaped glyph codes engine
 lib/                Vendored libraries (treat as read-only unless noted):
   DMDESP/           LED matrix driver + GLCD-format bitmap fonts (fonts/*.h)
   PrayerTimes/      Prayer time calculation
   RTClib/           DS3231 RTC driver
   Adafruit BusIO/   I2C helper used by RTClib
 tools/              Python dev tools (font generator, previews)
-test/               Unit tests (native env tests the shaper without hardware)
 docs/               ROADMAP / DECISIONS / FONT_SPEC (project continuity docs)
 ```
 
@@ -80,20 +136,16 @@ right message (pre-azan, azan flash, iqama countdown, sleep pixel, azkar).
 
 ### Web API & the mobile app ("Basit Remote")
 - Device is a WiFi AP `Basit-Masjed-<chipid>` at `192.168.1.177`.
-- Endpoints (GET): `/getData`, `/setDateTime`, `/setEqama`, `/setLocation`,
-  `/setSettings`, `/setMessage`; POST `/updateMain` (OTA); plus `/testMode`,
-  `/checkUpdate`.
-- **Transport encoding**: request/response values pass through `blur()` /
-  `unBlur()` (each byte → decimal of (byte+37), dash-separated). This operates
-  byte-wise and is transparent to UTF-8 — keep it as-is.
-- The app is updated separately by the owner to send plain Arabic UTF-8.
+- Endpoints: compact UTF-8 POST commands (`/getData`, `/setDateTime`,
+  `/setEqama`, `/setLocation`, `/setSettings`, `/setMessage`, `/setDisplay`,
+  `/setFont`),
+  `GET /checkUpdate`, and multipart `POST /updateMain` (OTA).
+- The AP password is the local access boundary; no `blur()`/`unBlur()` transport
+  remains in the commercial path.
 
-### Legacy Arabic text encoding (being replaced)
-Current fonts map each ASCII slot (0x20–0x7F) to one hand-drawn Arabic glyph
-form; strings are stored in reversed visual order because drawing is LTR.
-Examples in old `texts.h`: `"_}nWA JaVIAh"` = "اهلا وسهلا". Only ~95 slots
-exist so several letter forms were sacrificed — this is the problem the
-Arabic-support project fixes. See `docs/FONT_SPEC.md` for the new scheme.
+### Arabic text encoding
+Runtime text is UTF-8 and is shaped by `ArabicShaper` before rendering through
+the Basit/Tahoma bitmap fonts. See `docs/FONT_SPEC.md` for the font contract.
 
 ## Rules
 
@@ -105,6 +157,5 @@ Arabic-support project fixes. See `docs/FONT_SPEC.md` for the new scheme.
 3. EEPROM layout is versioned via `EEPROM_VERSION`; bumping resets user config
    once — always note it in DECISIONS.
 4. Keep commits small and descriptive; never commit `.pio/` build output.
-5. After code changes: build with `pio run` and, when touching the shaper,
-   run `pio test -e native`.
+5. After code changes: build with `pio run`.
 6. Update `docs/ROADMAP.md` status markers whenever you complete a phase.

@@ -4,21 +4,25 @@
 #include "CardScheduler.h"
 #include "constants.h"
 #include "globals.h"
-#include "PrayerMethodConfig.h"
+#include "PrayerMethodContract.h"
+#include "PrayerPhaseContract.h"
 #include "CivilTimeContract.h"
+#include "CompactApiContract.h"
 #include "texts.h"
-#include "OtaPublicKey.h"
 #include <Arduino.h>
 #include <DMDESP.h>
-#include <EEPROM.h>
-#include <ESP8266WebServer.h>
+#include <LittleFS.h>
+#include <BasitWebServer.h>
+#include <ESP8266WebServer.h> // Keep PlatformIO dependency discovery; header guard skips stock parsing.
+#ifndef BASIT_WEBSERVER_HARDENED
+#error "Build must use the project-local ESP8266WebServer safety overlay"
+#endif
 #include <ESP8266WiFi.h>
+#include <WiFiUdp.h>
 #include <PrayerTimes.h>
 #include <RTClib.h>
 #include <Wire.h>
 #include <Updater.h>
-#include <BearSSLHelpers.h>
-#include <bearssl/bearssl.h>
 #include <fonts/BasitFont16.h>
 #include <fonts/BasitFont7.h>
 #include <fonts/Tahoma16.h>
@@ -37,9 +41,11 @@ RTC_DS3231 rtc;
 DMDESP dmd(DISPLAYS_WIDE, DISPLAYS_HIGH);
 SmartText smartText(dmd, DISPLAY_PROFILE.width);
 static bool v2Request = false;
-static char v2Body[API_V2_BODY_SIZE];
+static char v2Body[CompactApi::BODY_SIZE];
 static bool displayFrameDirty = true;
 static bool displayReady = false;
+static uint32_t displayRevision = 0;
+static bool sleepingFrameShown = false;
 
 static uint16_t cardEnabledMask = (uint16_t(1) << CARD_COUNT) - 1;
 static uint8_t cardOrder[CARD_COUNT] = {0, 1, 2, 3, 4, 5,
@@ -50,6 +56,16 @@ static bool priorityDisplayActive = false;
 inline void markDisplayDirty()
 {
   displayFrameDirty = true;
+}
+
+void clearDisplay()
+{
+  dmd.clear();
+  ++displayRevision;
+  sleepingFrameShown = false;
+  smartText.reset();
+  dispState.setFirstShow(true);
+  markDisplayDirty();
 }
 
 inline void presentDisplayFrame()
@@ -108,9 +124,12 @@ inline void safeCopyP(char *dst, PGM_P src, size_t len)
 
 inline void sleeping()
 {
-  dmd.clear();
+  if (sleepingFrameShown)
+    return;
+  clearDisplay();
   dmd.setPixel(0, 0, Bitmap::White);
   markDisplayDirty();
+  sleepingFrameShown = true;
 }
 
 inline PGM_P prayerName(uint8_t i)
@@ -128,108 +147,32 @@ inline PGM_P hijriMonthName(int8_t m)
                                     : HIJRI_MONTH_AR[m - 1];
 }
 
-void blur(const char *text, char *out, size_t outSize)
-{
-  size_t len = 0;
-  for (size_t i = 0; text[i] && len + 4 < outSize; ++i)
-  {
-    if (i > 0)
-      out[len++] = '-';
-    uint8_t val = (uint8_t)text[i] + 37;
-    if (val >= 100)
-    {
-      out[len++] = '0' + (val / 100);
-      val %= 100;
-      out[len++] = '0' + (val / 10);
-    }
-    else if (val >= 10)
-      out[len++] = '0' + (val / 10);
-    out[len++] = '0' + (val % 10);
-  }
-  out[len] = '\0';
-}
-bool unBlur(const char *text, char *out, size_t outSize)
-{
-  if (!text || !text[0] || outSize == 0)
-    return false;
-  size_t len = 0;
-  const char *p = text;
-  while (*p)
-  {
-    if (len + 1 >= outSize || *p < '0' || *p > '9')
-      return false;
-    int val = 0;
-    uint8_t digits = 0;
-    while (*p >= '0' && *p <= '9')
-    {
-      if (++digits > 3)
-        return false;
-      val = val * 10 + (*p++ - '0');
-    }
-    if (val > 255)
-      return false;
-    out[len++] = (char)((val - 37 + 256) & 0xFF);
-    if (*p == '-')
-    {
-      ++p;
-      if (!*p)
-        return false;
-    }
-    else if (*p)
-      return false;
-  }
-  out[len] = '\0';
-  return true;
-}
-void xorConfig(Configuration &c)
-{
-  uint8_t *data = reinterpret_cast<uint8_t *>(&c);
-  size_t offset = sizeof(c.eepromVersion);
-  char key[16];
-  safeCopyP(key, ENCRYPT_KEY, sizeof(key));
-  size_t keyLen = strlen(key);
-  for (size_t i = 0; i < sizeof(Configuration) - offset; ++i)
-    data[offset + i] ^= key[i % keyLen];
-}
-
-struct ConfigMeta
+struct PersistedState
 {
   uint32_t magic;
-  uint32_t crc;
-};
-
-struct CardPrefsStorage
-{
-  uint32_t magic;
+  uint16_t version;
+  uint16_t reservedVersion;
+  uint32_t sequence;
+  Configuration config;
+  uint8_t makkahIshaMode;
+  uint8_t ultraPowerSave;
+  uint8_t powerSaveBrightness;
+  uint8_t reserved;
   uint16_t enabledMask;
   uint8_t order[CARD_COUNT];
   uint32_t crc;
 };
 
-struct PrayerPrefsStorage
-{
-  uint8_t magic;
-  uint8_t makkahIshaMode;
-  uint16_t crc;
-};
-
-static const uint32_t CONFIG_META_MAGIC = 0x42534333UL; // "BSC3"
-static const uint32_t CARD_PREFS_MAGIC = 0x42534350UL; // "BSCP"
-static const uint8_t PRAYER_PREFS_MAGIC = 0xA7;
-static constexpr size_t PRAYER_PREFS_OFFSET = sizeof(Configuration) + sizeof(ConfigMeta);
-static constexpr size_t CARD_PREFS_OFFSET = 464;
-static_assert(sizeof(Configuration) + sizeof(ConfigMeta) <= 512,
-              "Configuration exceeds EEPROM allocation");
-static_assert(CARD_PREFS_OFFSET + sizeof(CardPrefsStorage) <= 512,
-              "Card preferences exceed EEPROM allocation");
-
-static_assert(offsetof(Configuration, digitStyle) == 448,
-              "v4 migration requires the original 448-byte prefix");
-static_assert(sizeof(Configuration) == 452,
-              "Card preferences offset assumes the existing 452-byte config");
-static_assert(sizeof(PrayerPrefsStorage) == 4 &&
-                  PRAYER_PREFS_OFFSET + sizeof(PrayerPrefsStorage) == CARD_PREFS_OFFSET,
-              "Prayer preference sidecar must fit the EEPROM gap");
+static constexpr uint32_t CONFIG_STORE_MAGIC = 0x42534653UL; // "BSFS"
+static constexpr uint32_t CONFIG_STORE_VERSION = 1;
+static constexpr char CONFIG_STORE_A[] = "/config-a.bin";
+static constexpr char CONFIG_STORE_B[] = "/config-b.bin";
+static constexpr char CONFIG_STORE_TMP[] = "/config.tmp";
+static PersistedState persistedState{};
+static PersistedState stagedState{};
+static uint8_t persistedSlot = 1; // First successful write targets slot A.
+static uint32_t persistedSequence = 0;
+static bool configStoreReady = false;
 uint32_t bytesCrc32(const uint8_t *bytes, size_t size)
 {
   uint32_t crc = 0xFFFFFFFFUL;
@@ -241,57 +184,114 @@ uint32_t bytesCrc32(const uint8_t *bytes, size_t size)
   }
   return ~crc;
 }
-uint32_t configCrc32(const Configuration &source, size_t size = sizeof(Configuration))
+uint32_t persistedStateCrc(const PersistedState &state)
 {
-  return bytesCrc32(reinterpret_cast<const uint8_t *>(&source), size);
+  return bytesCrc32(reinterpret_cast<const uint8_t *>(&state),
+                    offsetof(PersistedState, crc));
 }
 
-uint16_t prayerPrefsCrc(uint8_t mode)
+bool validPersistedState(const PersistedState &state)
 {
-  uint16_t crc = 0xFFFF;
-  crc ^= mode;
-  for (uint8_t bit = 0; bit < 8; ++bit)
-    crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : (crc >> 1);
-  return crc;
+  const uint16_t validMask = (uint16_t(1) << CARD_COUNT) - 1;
+  return state.magic == CONFIG_STORE_MAGIC &&
+         state.version == CONFIG_STORE_VERSION &&
+         state.sequence > 0 && state.config.isValid() &&
+         validMakkahIshaMode(state.makkahIshaMode) &&
+         state.ultraPowerSave <= 1 && state.powerSaveBrightness <= 125 &&
+         state.enabledMask != 0 && !(state.enabledMask & ~validMask) &&
+         CardScheduler::validOrder(state.order) &&
+         state.crc == persistedStateCrc(state);
 }
 
-bool savePrayerPrefs(uint8_t mode)
+bool readPersistedState(const char *path, PersistedState &state)
 {
-  if (!validMakkahIshaMode(mode))
+  File file = LittleFS.open(path, "r");
+  if (!file || file.size() != sizeof(PersistedState))
+  {
+    if (file) file.close();
     return false;
-  PrayerPrefsStorage storage = {PRAYER_PREFS_MAGIC, mode, prayerPrefsCrc(mode)};
-  const uint8_t *bytes = reinterpret_cast<const uint8_t *>(&storage);
-  for (size_t i = 0; i < sizeof(storage); ++i)
-    if (EEPROM.read(PRAYER_PREFS_OFFSET + i) != bytes[i])
-    {
-      EEPROM.put(PRAYER_PREFS_OFFSET, storage);
-      return EEPROM.commit();
-    }
+  }
+  const bool ok = file.read(reinterpret_cast<uint8_t *>(&state), sizeof(state)) == sizeof(state);
+  file.close();
+  if (!ok || state.crc != persistedStateCrc(state))
+    return false;
+  if (state.config.migrateCityId())
+    state.crc = persistedStateCrc(state);
+  return validPersistedState(state);
+}
+
+bool writePersistedState(const char *target, const PersistedState &state)
+{
+  LittleFS.remove(CONFIG_STORE_TMP);
+  File file = LittleFS.open(CONFIG_STORE_TMP, "w");
+  if (!file || file.write(reinterpret_cast<const uint8_t *>(&state), sizeof(state)) != sizeof(state))
+  {
+    if (file) file.close();
+    LittleFS.remove(CONFIG_STORE_TMP);
+    return false;
+  }
+  file.flush();
+  file.close();
+  LittleFS.remove(target);
+  if (!LittleFS.rename(CONFIG_STORE_TMP, target))
+  {
+    LittleFS.remove(CONFIG_STORE_TMP);
+    return false;
+  }
   return true;
+}
+
+template <typename Stage>
+bool saveStorage(Stage stage)
+{
+  if (!configStoreReady) return false;
+  stagedState = persistedState;
+  stage();
+  // Do not consume a slot or a flash write when the requested state is the
+  // same byte-for-byte payload already committed.
+  const size_t payloadOffset = offsetof(PersistedState, config);
+  const size_t payloadSize = offsetof(PersistedState, crc) - payloadOffset;
+  if (memcmp(reinterpret_cast<const uint8_t *>(&stagedState) + payloadOffset,
+             reinterpret_cast<const uint8_t *>(&persistedState) + payloadOffset,
+             payloadSize) == 0)
+    return true;
+  stagedState.magic = CONFIG_STORE_MAGIC;
+  stagedState.version = CONFIG_STORE_VERSION;
+  stagedState.reservedVersion = 0;
+  stagedState.sequence = persistedSequence + 1;
+  stagedState.reserved = 0;
+  stagedState.crc = persistedStateCrc(stagedState);
+  const uint8_t targetSlot = uint8_t(1 - persistedSlot);
+  const char *target = targetSlot == 0 ? CONFIG_STORE_A : CONFIG_STORE_B;
+  if (!writePersistedState(target, stagedState)) return false;
+  persistedState = stagedState;
+  persistedSequence = stagedState.sequence;
+  persistedSlot = targetSlot;
+  return true;
+}
+
+void stagePowerPrefs(uint8_t brightness)
+{
+  stagedState.powerSaveBrightness = brightness;
+}
+
+bool loadPowerPrefs()
+{
+  powerSaveBrightness = persistedState.powerSaveBrightness;
+  return true;
+}
+
+void stagePrayerPrefs(uint8_t mode, bool ultra)
+{
+  stagedState.makkahIshaMode = mode;
+  stagedState.ultraPowerSave = ultra ? 1 : 0;
 }
 
 bool loadPrayerPrefs()
 {
-  PrayerPrefsStorage storage;
-  EEPROM.get(PRAYER_PREFS_OFFSET, storage);
-  if (storage.magic != PRAYER_PREFS_MAGIC ||
-      !validMakkahIshaMode(storage.makkahIshaMode) ||
-      storage.crc != prayerPrefsCrc(storage.makkahIshaMode))
-  {
-    makkahIshaMode = 0;
-    return false;
-  }
-  makkahIshaMode = storage.makkahIshaMode;
+  makkahIshaMode = persistedState.makkahIshaMode;
+  ultraPowerSave = persistedState.ultraPowerSave != 0;
   return true;
-}
-
-uint32_t cardPrefsCrc(uint16_t mask, const uint8_t order[CARD_COUNT])
-{
-  uint8_t data[2 + CARD_COUNT];
-  data[0] = uint8_t(mask & 0xFF);
-  data[1] = uint8_t(mask >> 8);
-  memcpy(data + 2, order, CARD_COUNT);
-  return bytesCrc32(data, sizeof(data));
 }
 
 void resetCardPrefsRuntime()
@@ -301,146 +301,67 @@ void resetCardPrefsRuntime()
     cardOrder[i] = i;
 }
 
-bool saveCardPrefs()
+void stageCardPrefs(uint16_t mask, const uint8_t order[CARD_COUNT])
 {
-  CardPrefsStorage storage;
-  memset(&storage, 0, sizeof(storage));
-  storage.magic = CARD_PREFS_MAGIC;
-  storage.enabledMask = cardEnabledMask;
-  memcpy(storage.order, cardOrder, sizeof(cardOrder));
-  storage.crc = cardPrefsCrc(storage.enabledMask, storage.order);
-  const uint8_t *bytes = reinterpret_cast<const uint8_t *>(&storage);
-  bool changed = false;
-  for (size_t i = 0; i < sizeof(storage); ++i)
-  {
-    if (EEPROM.read(CARD_PREFS_OFFSET + i) != bytes[i])
-    {
-      changed = true;
-      break;
-    }
-  }
-  if (!changed)
-    return true;
-  EEPROM.put(CARD_PREFS_OFFSET, storage);
-  return EEPROM.commit();
+  stagedState.enabledMask = mask;
+  memcpy(stagedState.order, order, sizeof(stagedState.order));
 }
 
 bool loadCardPrefs()
 {
-  CardPrefsStorage storage;
-  EEPROM.get(CARD_PREFS_OFFSET, storage);
-  const uint16_t validMask = (uint16_t(1) << CARD_COUNT) - 1;
-  if (storage.magic != CARD_PREFS_MAGIC || storage.enabledMask == 0 ||
-      (storage.enabledMask & ~validMask) ||
-      !CardScheduler::validOrder(storage.order) ||
-      storage.crc != cardPrefsCrc(storage.enabledMask, storage.order))
-  {
-    resetCardPrefsRuntime();
-    return false;
-  }
-  cardEnabledMask = storage.enabledMask;
-  memcpy(cardOrder, storage.order, sizeof(cardOrder));
+  cardEnabledMask = persistedState.enabledMask;
+  memcpy(cardOrder, persistedState.order, sizeof(cardOrder));
   return true;
 }
 
+void stageConfig(const Configuration &source)
+{
+  stagedState.config = source;
+}
 bool saveConfig(const Configuration &source)
 {
-  Configuration tmp;
-  memcpy(&tmp, &source, sizeof(Configuration));
-  const ConfigMeta meta = {CONFIG_META_MAGIC, configCrc32(source)};
-  xorConfig(tmp);
-  const uint8_t *bytes = reinterpret_cast<const uint8_t *>(&tmp);
-  bool changed = false;
-  for (size_t i = 0; i < sizeof(Configuration); ++i)
-  {
-    if (EEPROM.read(i) != bytes[i])
-    {
-      changed = true;
-      break;
-    }
-  }
-  const uint8_t *metaBytes = reinterpret_cast<const uint8_t *>(&meta);
-  for (size_t i = 0; !changed && i < sizeof(ConfigMeta); ++i)
-    changed = EEPROM.read(sizeof(Configuration) + i) != metaBytes[i];
-  if (!changed)
-    return true;
-  EEPROM.put(0, tmp);
-  EEPROM.put(sizeof(Configuration), meta);
-  return EEPROM.commit();
+  return source.isValid() && saveStorage([&]() { stageConfig(source); });
 }
-bool saveConfig() { return saveConfig(config); }
 bool loadConfig()
 {
-  Configuration tmp;
-  ConfigMeta meta;
-  EEPROM.get(0, tmp);
-  if (tmp.eepromVersion == 0xFFFF)
-  {
-    DBGLN(F("EEPROM empty"));
-    return false;
-  }
-  xorConfig(tmp);
-  if (tmp.eepromVersion != EEPROM_VERSION || !tmp.isValid())
-  {
-    if (tmp.eepromVersion == 4 || tmp.eepromVersion == 5)
-    {
-      const size_t oldSize = tmp.eepromVersion == 4 ? 448 : 452;
-      EEPROM.get(oldSize, meta);
-      if (meta.magic != CONFIG_META_MAGIC || meta.crc != configCrc32(tmp, oldSize))
-        return false;
-      if (tmp.eepromVersion == 4) tmp.digitStyle = 0;
-      if (tmp.eqamaShrouq == 0) tmp.eqamaShrouq = 10;
-      tmp.eepromVersion = EEPROM_VERSION;
-      tmp.hour24 = 0;
-      if (!tmp.isValid() || !saveConfig(tmp))
-        return false;
-      config = tmp;
-      DBGLN(F("EEPROM migrated: settings preserved"));
-      return true;
-    }
-    DBGLN(F("EEPROM invalid"));
-    return false;
-  }
-  EEPROM.get(sizeof(Configuration), meta);
-  if (meta.magic == CONFIG_META_MAGIC && meta.crc != configCrc32(tmp))
-  {
-    DBGLN(F("EEPROM CRC invalid"));
-    return false;
-  }
-  memcpy(&config, &tmp, sizeof(Configuration));
-  // Keep EEPROM compatible with firmware that briefly exposed Arial Bold;
-  // the removed family falls back to Basit without resetting other settings.
-  if (config.fontFamily > 1)
-  {
-    config.fontFamily = 0;
-    saveConfig();
-    DBGLN(F("Removed font normalized to Basit"));
-  }
-  if (config.eqamaShrouq == 0)
-  {
-    config.eqamaShrouq = 10;
-    saveConfig();
-    DBGLN(F("Eqama sunrise default enabled"));
-  }
-  if (meta.magic != CONFIG_META_MAGIC)
-  {
-    DBGLN(F("EEPROM CRC initialized"));
-    saveConfig();
-  }
+  if (!configStoreReady) return false;
+  PersistedState a{}, b{};
+  const bool validA = readPersistedState(CONFIG_STORE_A, a);
+  const bool validB = readPersistedState(CONFIG_STORE_B, b);
+  if (!validA && !validB) return false;
+  const bool useA = validA && (!validB || int32_t(a.sequence - b.sequence) > 0);
+  persistedState = useA ? a : b;
+  persistedSlot = useA ? 0 : 1;
+  persistedSequence = persistedState.sequence;
+  config = persistedState.config;
+  makkahIshaMode = persistedState.makkahIshaMode;
+  ultraPowerSave = persistedState.ultraPowerSave != 0;
+  powerSaveBrightness = persistedState.powerSaveBrightness;
+  cardEnabledMask = persistedState.enabledMask;
+  memcpy(cardOrder, persistedState.order, sizeof(cardOrder));
   return true;
 }
-void resetConfig()
+bool resetConfig()
 {
   DBGLN(F("Reset defaults"));
-  config = Configuration();
-  config.setDefaults();
-  safeCopy(config.masjedName, "0", sizeof(config.masjedName));
-  safeCopy(config.message, "0", sizeof(config.message));
-  saveConfig();
+  Configuration next{};
+  next.setDefaults();
+  uint8_t order[CARD_COUNT];
+  for (uint8_t i = 0; i < CARD_COUNT; ++i)
+    order[i] = i;
+  if (!saveStorage([&]() {
+        stageConfig(next);
+        stagePrayerPrefs(0, false);
+        stagePowerPrefs(1);
+        stageCardPrefs((uint16_t(1) << CARD_COUNT) - 1, order);
+      }))
+    return false;
+  config = next;
   makkahIshaMode = 0;
-  savePrayerPrefs(makkahIshaMode);
+  ultraPowerSave = false;
+  powerSaveBrightness = 1;
   resetCardPrefsRuntime();
-  saveCardPrefs();
+  return true;
 }
 
 bool isDST(int y, int m, int d)
@@ -456,28 +377,25 @@ void calcHijri()
   hijriLastMonth = timeData.month;
   hijriLastDay = timeData.day;
 
-  int64_t a = (14 - timeData.month) / 12;
-  int64_t y = (int64_t)timeData.year + 4800 - a;
-  int64_t m = (int64_t)timeData.month + 12 * a - 3;
-  int64_t jd = (int64_t)timeData.day + ((153 * m + 2) / 5) + 365 * y + y / 4 -
-               y / 100 + y / 400 - 32045 + config.hijriDayCorrection;
-
-  int64_t l = jd - 1948440 + 10632;
-  int64_t n = (l - 1) / 10631;
-  l = l - 10631 * n + 354;
-  int64_t j = ((10985 - l) / 5316) * ((50 * l) / 17719) +
-              (l / 5670) * ((43 * l) / 15238);
-  l = l - ((30 - j) / 15) * ((17719 * j) / 50) - (j / 16) * ((15238 * j) / 43) +
-      29;
-
-  timeData.hMonth = (int8_t)((24 * l) / 709);
-  timeData.hDay = (int8_t)(l - (709 * timeData.hMonth) / 24);
-  timeData.hYear = (int16_t)(30 * n + j - 30);
+  CivilTime::gregorianToHijri(timeData.year, timeData.month, timeData.day,
+                              config.hijriDayCorrection, timeData.hYear,
+                              timeData.hMonth, timeData.hDay);
 }
 
 void calcPrayers()
 {
+  if (!CivilTime::validDate(timeData.year, timeData.month, timeData.day))
+  {
+    for (int16_t &time : prayerCache.times)
+      time = -1;
+    prayerCache.valid = false;
+    prayerCache.activeStart = prayerCache.activeEnd = INT16_MIN;
+    return;
+  }
+  const int timezoneOffset = config.timezoneOffset +
+                  (config.daylightSavingTime == 1 && rtcSeasonalAdjustment ? 1 : 0);
   if (prayerCache.valid &&
+      prayerCache.timeZone == timezoneOffset &&
       sameCalendarDate(timeData.year, timeData.month, timeData.day,
                        prayerCache.lastYear, prayerCache.lastMonth,
                        prayerCache.lastDay))
@@ -485,33 +403,29 @@ void calcPrayers()
 
   set_high_lats_adjust_method(AngleBased);
 
-  const PrayerMethodConfig method =
-      prayerMethodConfigForMode(config.calcMethod, makkahIshaMode);
+  const PrayerMethodSpec method =
+      prayerMethodSpec(config.prayerCalculationMethod, makkahIshaMode);
   // The library's setters intentionally select Custom. Configure all three
   // twilight rules explicitly so no stale or zero-initialized field survives.
   set_fajr_angle(method.fajrAngle);
-  if (method.maghribInMinutes)
-    set_maghrib_minutes(method.maghribValue);
-  else
-    set_maghrib_angle(method.maghribValue);
-  if (method.ishaInMinutes)
+  set_maghrib_minutes(method.maghribMinutes);
+  if (method.ishaMinutes)
     set_isha_minutes(method.ishaValue);
   else
     set_isha_angle(method.ishaValue);
-  set_asr_method(config.wayMethod == 0 ? Shafii : Hanafi);
-
-  int dst =
-      config.dst + (config.summerTime == 1 &&
-                            isDST(timeData.year, timeData.month, timeData.day)
-                        ? 1
-                        : 0);
+  set_asr_method(config.asrMethod == 0 ? Shafii : Hanafi);
 
   double times[8];
   get_prayer_times(timeData.year, timeData.month, timeData.day, config.latitude,
-                   config.longitude, dst, times);
+                   config.longitude, timezoneOffset, times);
 
   for (uint8_t i = 0; i <= 6; ++i)
   {
+    if (!isfinite(times[i]))
+    {
+      prayerCache.times[i] = -1;
+      continue;
+    }
     uint8_t h, m;
     get_float_time_parts(times[i], h, m);
     prayerCache.times[i] = h * 60 + m;
@@ -519,6 +433,7 @@ void calcPrayers()
   prayerCache.lastYear = timeData.year;
   prayerCache.lastMonth = timeData.month;
   prayerCache.lastDay = timeData.day;
+  prayerCache.timeZone = timezoneOffset;
   prayerCache.valid = true;
   prayerCache.activeStart = prayerCache.activeEnd = INT16_MIN;
 }
@@ -554,25 +469,62 @@ void updatePrayerWindow(int16_t nowMins)
   }
 }
 
+// RTClib does not report short I2C reads. Check both the calendar registers
+// and oscillator-stop status before publishing an authoritative time sample.
+bool readRtcTime(DateTime &value)
+{
+  sysFlags.setRtcTimeValid(false);
+  Wire.beginTransmission(0x68);
+  Wire.write(uint8_t(0));
+  if (Wire.endTransmission(false) != 0 ||
+      Wire.requestFrom(uint8_t(0x68), uint8_t(7)) != 7)
+  {
+    sysFlags.setRtc(false);
+    return false;
+  }
+  uint8_t registers[7];
+  for (uint8_t &reg : registers)
+    reg = Wire.read();
+  Wire.beginTransmission(0x68);
+  Wire.write(uint8_t(0x0F));
+  if (Wire.endTransmission(false) != 0 ||
+      Wire.requestFrom(uint8_t(0x68), uint8_t(1)) != 1)
+  {
+    sysFlags.setRtc(false);
+    return false;
+  }
+  sysFlags.setRtc(true);
+  const bool valid = CivilTime::decodeDs3231(registers, Wire.read(), value);
+  sysFlags.setRtcTimeValid(valid);
+  return valid;
+}
+
 void syncRTC()
 {
+  if (rtcAdjustmentRequired)
+  {
+    sysFlags.setRtcTimeValid(false);
+    return;
+  }
   if (!sysFlags.rtcOk())
   {
     return;
   }
 
-  DateTime now = rtc.now();
-  if (!now.isValid() || now.year() < MIN_VALID_YEAR || now.year() > 2099)
-  {
-    DBGLN(F("RTC read invalid"));
-    sysFlags.setRtc(false);
+  DateTime now;
+  lastRtcSyncMs = millis(); // Pace failed samples too; a transient read is retried.
+  if (!readRtcTime(now))
     return;
-  }
-  bool dst = config.summerTime == 1 &&
-             isDST(now.year(), now.month(), now.day());
-  DateTime dt = dst ? now + TimeSpan(0, 1, 0, 0) : now;
+  bool daylightSavingActive = config.daylightSavingTime == 1 &&
+             CivilTime::isDstAtStandardTime(now.year(), now.month(), now.day(),
+                                            now.hour(), now.minute());
+  DateTime dt = daylightSavingActive ? now + TimeSpan(0, 1, 0, 0) : now;
 
-  bool dayChanged = (dt.day() != timeData.day);
+  const bool dayChanged = !sameCalendarDate(dt.year(), dt.month(), dt.day(),
+                                            timeData.year, timeData.month,
+                                            timeData.day);
+  const bool seasonalChanged = rtcSeasonalAdjustment != daylightSavingActive;
+  rtcSeasonalAdjustment = daylightSavingActive;
   timeData.year = dt.year();
   timeData.month = dt.month();
   timeData.day = dt.day();
@@ -581,11 +533,13 @@ void syncRTC()
   timeData.sec = dt.second();
   timeData.dow = dt.dayOfTheWeek();
   lastRtcSyncMs = millis();
+  lastSecondMs = lastRtcSyncMs; // This RTC sample already includes elapsed ticks.
 
-  if (dayChanged)
+  if (dayChanged || seasonalChanged || !prayerCache.valid)
   {
     calcHijri();
     calcPrayers();
+    updatePrayerWindow(timeData.hour * 60 + timeData.min);
   }
 }
 
@@ -648,6 +602,7 @@ bool startRTC(bool allowBusRecovery)
   if (!beginRTCDevice(allowBusRecovery))
     return false;
   sysFlags.setRtc(true);
+  sysFlags.setRtcTimeValid(false);
   syncRTC();
   return sysFlags.rtcOk();
 }
@@ -672,10 +627,10 @@ void serviceRTC(unsigned long now)
 
 void advanceSoftwareDate()
 {
-  if (timeData.year < MIN_VALID_YEAR || timeData.month < 1 || timeData.month > 12)
+  if (timeData.year < CivilTime::MIN_YEAR || timeData.month < 1 || timeData.month > 12)
     return;
   timeData.dow = (timeData.dow + 1) % 7;
-  if (++timeData.day <= daysInMonth(timeData.year, timeData.month))
+  if (++timeData.day <= CivilTime::daysInMonth(timeData.year, timeData.month))
     return;
   timeData.day = 1;
   if (++timeData.month <= 12)
@@ -686,33 +641,17 @@ void advanceSoftwareDate()
 
 void tickSecond()
 {
-  static unsigned long lastSync = 0;
   if (++timeData.sec <= 59)
     return;
   timeData.sec = 0;
   if (++timeData.min <= 59)
-  {
-    if (millis() - lastSync >= MS_RTC_SYNC)
-    {
-      syncRTC();
-      lastSync = millis();
-    }
     return;
-  }
   timeData.min = 0;
-  bool dayRolled = ++timeData.hour > 23;
-  if (dayRolled)
-    timeData.hour = 0;
-  syncRTC();
-  if (dayRolled && !sysFlags.rtcOk())
+  if (++timeData.hour > 23)
   {
+    timeData.hour = 0;
     advanceSoftwareDate();
-    invalidateCaches(prayerCache, hijriLastYear, hijriLastMonth,
-                     hijriLastDay);
-    calcHijri();
-    calcPrayers();
   }
-  lastSync = millis();
 }
 
 void nextCard()
@@ -730,6 +669,7 @@ void restoreCardAfterPriority()
   if (!priorityDisplayActive)
     return;
   priorityDisplayActive = false;
+  sleepingFrameShown = false;
   if (priorityResumeCard >= 1 && priorityResumeCard <= CARD_COUNT)
   {
     dispState.cardNum = priorityResumeCard;
@@ -766,11 +706,6 @@ static int16_t displayTextWidth(const char *text)
 
 static void drawDisplayText(int16_t x, int8_t y, const char *text)
 {
-  if (config.language != LANG_EN)
-  {
-    dmd.drawText(x, y, text);
-    return;
-  }
   for (size_t i = 0; text[i]; ++i)
   {
     int charWidth = dmd.drawChar(x, y, text[i]);
@@ -783,15 +718,20 @@ static void drawDisplayText(int16_t x, int8_t y, const char *text)
                          ? englishLetter(current) && englishLetter(next)
                          : asciiDigit(current) && asciiDigit(next);
     if (next && gap)
+    {
+      dmd.drawFilledRect(x, y, x, y + dmd.textHeight() - 1, Bitmap::Black);
       ++x;
+    }
   }
 }
 
 void drawTopClock()
 {
   static int8_t lastSec = -1;
-  if (lastSec == timeData.sec)
+  static uint32_t lastRevision = UINT32_MAX;
+  if (lastSec == timeData.sec && lastRevision == displayRevision)
     return;
+  lastRevision = displayRevision;
   lastSec = timeData.sec;
   const int16_t clockArea = DISPLAY_PROFILE.clockAreaWidth;
   const bool showPeriod = !config.hour24 && clockArea >= 64;
@@ -814,14 +754,17 @@ void drawTopClock()
       *p++ = *q;
     *p++ = ' ';
   }
-  int2str2(p, displayHour(timeData.hour, config.hour24));
+  int2str2(p, CivilTime::displayHour(timeData.hour, config.hour24));
   p += 2;
   *p++ = ':';
   int2str2(p, timeData.min);
   p += 2;
-  *p++ = ':';
-  int2str2(p, timeData.sec);
-  p += 2;
+  if (clockArea > 32)
+  {
+    *p++ = ':';
+    int2str2(p, timeData.sec);
+    p += 2;
+  }
   *p = '\0';
   const int16_t textWidth = displayTextWidth(fmtBuf);
   int16_t x = (clockArea - textWidth) / 2;
@@ -842,8 +785,10 @@ void drawTopInfo()
   static char cachedText[32] = {0};
   static char shapedText[64] = {0};
   static int8_t cachedLanguage = -1;
-  if (cachedLanguage != config.language)
+  static uint32_t lastRevision = UINT32_MAX;
+  if (cachedLanguage != config.language || lastRevision != displayRevision)
   {
+    lastRevision = displayRevision;
     cachedLanguage = config.language;
     cachedDayIndex = -1;
     cachedMonthIndex = -1;
@@ -1029,13 +974,10 @@ void checkPrayers(unsigned long now, int16_t nowMins)
       continue;
     const int8_t eq = eqamaCache.times[i];
     const int16_t since = signedMinuteDelta(nowMins, pt);
-    const int16_t delta = -since;
     safeCopyP(prayerNameBuf, prayerName(i), sizeof(prayerNameBuf));
-    if ((!friday && i != 2) && (delta > 5 || since > 30)) 
-      continue;
     const bool skipEq = (i == 2 && friday);
     const PrayerPhase phase =
-        skipEq ? PrayerPhase::Outside : prayerPhase(since, eq, sleepTime);
+        prayerPhase(since, skipEq ? 0 : eq, sleepTime);
     // 1. Pre-Prayer (3 mins before: delta 3, 2, 1)
     if (phase == PrayerPhase::PreAzan)
     {
@@ -1043,10 +985,10 @@ void checkPrayers(unsigned long now, int16_t nowMins)
       uint8_t h, m;
       minToHM(pt, h, m);
       snprintf(dispState.runText, sizeof(dispState.runText), "%d:%02d  %s",
-               displayHour(h, config.hour24), m, prayerNameBuf);
+               CivilTime::displayHour(h, config.hour24), m, prayerNameBuf);
       snprintf(dispState.tempBuf, sizeof(dispState.tempBuf), "%d : %02d : %02d",
-               displayHour(timeData.hour, config.hour24), timeData.min, timeData.sec);
-      displayText(dispState.runText, dispState.tempBuf, false, true, now);
+               CivilTime::displayHour(timeData.hour, config.hour24), timeData.min, timeData.sec);
+      displayText(dispState.runText, dispState.tempBuf, false, false, now);
       return;
     }
     // 2. Azan (Now + 1 min: since 0, 1)
@@ -1055,7 +997,7 @@ void checkPrayers(unsigned long now, int16_t nowMins)
       dispState.setStopCards(true);
       if (i == 1)
       {
-        displayText(prayerNameBuf, nullptr, true, true, now);
+        displayText(prayerNameBuf, nullptr, true, false, now);
       }
       else
       {
@@ -1065,7 +1007,7 @@ void checkPrayers(unsigned long now, int16_t nowMins)
         snprintf_P(dispState.runText, sizeof(dispState.runText),
                    english ? MSG_AZAN_EN : MSG_AZAN,
                    prayerNameBuf);
-        displayText(dispState.runText, nullptr, true, true, now);
+        displayText(dispState.runText, nullptr, true, false, now);
       }
       return;
     }
@@ -1085,16 +1027,20 @@ void checkPrayers(unsigned long now, int16_t nowMins)
                  forwardMinuteDistance(nowMins, pt + eq));
       safeCopyP(dispState.tempBuf, english ? MSG_EQAMA_EN : MSG_EQAMA,
                 sizeof(dispState.tempBuf));
-      displayText(dispState.runText, dispState.tempBuf, false, true, now);
+      displayText(dispState.runText, dispState.tempBuf, false, false, now);
       return;
     }
     if (phase == PrayerPhase::EqamaSeconds)
     {
       dispState.setStopCards(true);
-      snprintf_P(dispState.runText, sizeof(dispState.runText),
-                 english ? MSG_EQAMA_SEC_EN : MSG_EQAMA_SEC,
+      if (DISPLAY_PROFILE.narrow())
+        snprintf(dispState.runText, sizeof(dispState.runText), "%02d",
                  60 - timeData.sec);
-      displayText(dispState.runText, nullptr, false, true, now);
+      else
+        snprintf_P(dispState.runText, sizeof(dispState.runText),
+                   english ? MSG_EQAMA_SEC_EN : MSG_EQAMA_SEC,
+                   60 - timeData.sec);
+      displayText(dispState.runText, nullptr, false, false, now);
       return;
     }
     if (phase == PrayerPhase::Eqama)
@@ -1102,7 +1048,7 @@ void checkPrayers(unsigned long now, int16_t nowMins)
       dispState.setStopCards(true);
       safeCopyP(dispState.runText, english ? MSG_EQAMA_EN : MSG_EQAMA,
                 sizeof(dispState.runText));
-      displayText(dispState.runText, nullptr, true, true, now);
+      displayText(dispState.runText, nullptr, true, false, now);
       return;
     }
     if (phase == PrayerPhase::Sleep)
@@ -1120,7 +1066,7 @@ void checkPrayers(unsigned long now, int16_t nowMins)
       safeCopyP(dispState.tempBuf,
                 english ? AZKAR_AFTER2_EN : AZKAR_AFTER2,
                 sizeof(dispState.tempBuf));
-      displayText(dispState.runText, dispState.tempBuf, false, true, now);
+      displayText(dispState.runText, dispState.tempBuf, false, false, now);
       return;
     }
   }
@@ -1306,7 +1252,7 @@ void cardClock()
   }
   // Fast clock formatting
   char *p = dispState.runText;
-  uint8_t h12 = displayHour(timeData.hour, config.hour24);
+  uint8_t h12 = CivilTime::displayHour(timeData.hour, config.hour24);
   if (h12 >= 10)
     *p++ = '0' + h12 / 10;
   *p++ = '0' + h12 % 10;
@@ -1331,10 +1277,8 @@ void cardPrayers()
     // Logical order is Fajr -> Sunrise -> Dhuhr -> Asr -> Maghrib -> Isha.
     // ArabicShaper performs the visual RTL reversal, so this puts Fajr at
     // the right edge and Isha at the left edge on the physical panel.
-    for (uint8_t i = 0; i <= 6; ++i)
+    for (uint8_t i : PrayerIndex::EventIndices)
     {
-      if (i == 5)
-        continue;
       // Name first in logical text makes the visual RTL order "name time".
       char nameBuf[16];
       safeCopyP(nameBuf, prayerName(i), sizeof(nameBuf));
@@ -1342,11 +1286,19 @@ void cardPrayers()
       while (*name)
         *p++ = *name++;
       *p++ = ' ';
-      uint8_t h, m;
-      minToHM(prayerCache.times[i], h, m);
-      p += sprintf(p, "%d:", displayHour(h, config.hour24));
-      int2str2(p, m);
-      p += 2;
+      if (prayerCache.times[i] < 0 || prayerCache.times[i] >= 1440)
+      {
+        *p++ = '-';
+        *p++ = '-';
+      }
+      else
+      {
+        uint8_t h, m;
+        minToHM(prayerCache.times[i], h, m);
+        p += sprintf(p, "%d:", CivilTime::displayHour(h, config.hour24));
+        int2str2(p, m);
+        p += 2;
+      }
       *p++ = ' ';
       *p++ = ' ';
       *p++ = ' ';
@@ -1360,7 +1312,6 @@ void cardPrayers()
 }
 void cardZekrAllah() { cardZekr(ZEKR_ALLAH, ZEKR_ALLAH_EN); }
 void cardZekrMohamed() { cardZekr(ZEKR_MOHAMED, ZEKR_MOHAMED_EN); }
-// void cardZekrIslam() { cardZekr(MN_HOSN_ISLAM); }
 void cardDayName() { cardBigFontOnly(0); }
 void cardDateFull() { cardBigFontOnly(1); }
 void cardHijriDate() { cardBigFontOnly(2); }
@@ -1426,8 +1377,12 @@ void serviceFactoryReset(unsigned long now)
   if (!completed && now - pressedAt >= MS_FACTORY_RESET_HOLD)
   {
     completed = true;
-    resetConfig();
-    dmd.clear();
+    if (!resetConfig())
+    {
+      DBGLN(F("Factory reset save failed"));
+      return;
+    }
+    clearDisplay();
     dmd.setPixel(0, 0, Bitmap::White);
     markDisplayDirty();
     sysFlags.setRestart(true);
@@ -1437,90 +1392,12 @@ void serviceFactoryReset(unsigned long now)
 
 bool validV2Body(const char *body)
 {
-  if (!body[0])
-    return true;
-  char keys[16][16];
-  uint8_t keyCount = 0;
-  const char *line = body;
-  while (*line)
-  {
-    const char *end = strchr(line, '\n');
-    if (!end)
-      end = line + strlen(line);
-    const char *eq = (const char *)memchr(line, '=', end - line);
-    size_t keyLen = eq ? (size_t)(eq - line) : 0;
-    if (!eq || keyLen == 0 || keyLen >= sizeof(keys[0]) || keyCount >= 16)
-      return false;
-    for (size_t i = 0; i < keyLen; ++i)
-      if (!isalnum((unsigned char)line[i]) && line[i] != '_')
-        return false;
-    for (uint8_t i = 0; i < keyCount; ++i)
-      if (strlen(keys[i]) == keyLen && !memcmp(keys[i], line, keyLen))
-        return false;
-    memcpy(keys[keyCount], line, keyLen);
-    keys[keyCount++][keyLen] = '\0';
-    for (const char *p = eq + 1; p < end; ++p)
-      if (*p == '\\' && (++p >= end || (*p != '\\' && *p != 'n')))
-        return false;
-    if (!*end)
-      break;
-    line = end + 1;
-    if (!*line)
-      return false;
-  }
-  return true;
+  return CompactApi::validBody(body);
 }
 
-bool findV2Value(const char *key, char *out, size_t outSize)
+int findV2Value(const char *key, char *out, size_t outSize)
 {
-  const size_t wanted = strlen(key);
-  const char *line = v2Body;
-  while (*line)
-  {
-    const char *end = strchr(line, '\n');
-    if (!end)
-      end = line + strlen(line);
-    const char *eq = (const char *)memchr(line, '=', end - line);
-    if (eq && (size_t)(eq - line) == wanted && !memcmp(line, key, wanted))
-    {
-      size_t len = 0;
-      for (const char *p = eq + 1; p < end; ++p)
-      {
-        char c = *p;
-        if (c == '\\')
-          c = *++p == 'n' ? '\n' : '\\';
-        if (len + 1 >= outSize)
-          return false;
-        out[len++] = c;
-      }
-      out[len] = '\0';
-      return true;
-    }
-    line = *end ? end + 1 : end;
-  }
-  return false;
-}
-
-bool hasV2Key(const char *key)
-{
-  const size_t wanted = strlen(key);
-  const char *line = v2Body;
-  while (*line)
-  {
-    const char *end = strchr(line, '\n');
-    if (!end)
-      end = line + strlen(line);
-    const char *eq = (const char *)memchr(line, '=', end - line);
-    if (eq && (size_t)(eq - line) == wanted && !memcmp(line, key, wanted))
-      return true;
-    line = *end ? end + 1 : end;
-  }
-  return false;
-}
-
-bool hasRequestArg(const char *arg)
-{
-  return v2Request ? hasV2Key(arg) : server.hasArg(arg);
+  return CompactApi::findValue(v2Body, key, out, outSize);
 }
 
 void sendV2(int status, const char *body)
@@ -1547,13 +1424,19 @@ bool beginV2(const char *path, bool allowedBeforePasswordChange)
   String body = server.arg("plain");
   if (body.length() >= sizeof(v2Body))
   {
-    sendV2Error(400, "body_too_large");
+    sendV2Error(413, "body_too_large");
     return false;
   }
   body.toCharArray(v2Body, sizeof(v2Body));
-  if (!validV2Body(v2Body))
+  if (body.length() != strlen(v2Body) || !validV2Body(v2Body))
   {
     sendV2Error(400, "bad_body");
+    return false;
+  }
+  char version[4];
+  if (findV2Value("v", version, sizeof(version)) != 1 || strcmp(version, "2") != 0)
+  {
+    sendV2Error(400, "version");
     return false;
   }
   // The AP password is the access-control boundary. Keep the compact v2
@@ -1564,77 +1447,29 @@ bool beginV2(const char *path, bool allowedBeforePasswordChange)
 
 void endV2() { v2Request = false; }
 
-bool getArg(const char *arg, char *buf, size_t len)
-{
-  if (!hasRequestArg(arg))
-    return false;
-  if (v2Request)
-    return findV2Value(arg, buf, len);
-  return unBlur(server.arg(arg).c_str(), buf, len);
-}
-
-bool parseLongValue(const char *text, long minValue, long maxValue,
-                    long &value)
-{
-  char *end = nullptr;
-  long parsed = strtol(text, &end, 10);
-  if (end == text || *end != '\0' || parsed < minValue || parsed > maxValue)
-    return false;
-  value = parsed;
-  return true;
-}
-
-bool parseFloatValue(const char *text, float minValue, float maxValue,
-                     float &value)
-{
-  char *end = nullptr;
-  double parsed = strtod(text, &end);
-  if (end == text || *end != '\0' || !isfinite(parsed) || parsed < minValue ||
-      parsed > maxValue)
-    return false;
-  value = static_cast<float>(parsed);
-  return true;
-}
-
 template <typename T>
-bool readIntArg(const char *arg, T &value, long minValue, long maxValue)
+bool readIntArg(const char *arg, T &value, long minValue, long maxValue,
+                bool required = false)
 {
-  if (!hasRequestArg(arg))
-    return true;
   long parsed;
   char buf[24];
-  if (v2Request)
-  {
-    if (!findV2Value(arg, buf, sizeof(buf)))
-      return false;
-    if (!parseLongValue(buf, minValue, maxValue, parsed))
-      return false;
-  }
-  else if (!parseLongValue(server.arg(arg).c_str(), minValue, maxValue, parsed))
-  {
-    if (!getArg(arg, buf, sizeof(buf)) ||
-        !parseLongValue(buf, minValue, maxValue, parsed))
-      return false;
-  }
+  const int found = findV2Value(arg, buf, sizeof(buf));
+  if (found <= 0)
+    return found == 0 && !required;
+  if (!CompactApi::parseInteger(buf, minValue, maxValue, parsed))
+    return false;
   value = static_cast<T>(parsed);
   return true;
 }
 
-bool readFloatArg(const char *arg, float &value, float minValue, float maxValue)
+bool readFloatArg(const char *arg, float &value, float minValue, float maxValue,
+                  bool required = false)
 {
-  if (!hasRequestArg(arg))
-    return true;
   char buf[24];
-  if (v2Request)
-  {
-    if (!findV2Value(arg, buf, sizeof(buf)))
-      return false;
-    return parseFloatValue(buf, minValue, maxValue, value);
-  }
-  if (parseFloatValue(server.arg(arg).c_str(), minValue, maxValue, value))
-    return true;
-  return getArg(arg, buf, sizeof(buf)) &&
-         parseFloatValue(buf, minValue, maxValue, value);
+  const int found = findV2Value(arg, buf, sizeof(buf));
+  if (found <= 0)
+    return found == 0 && !required;
+  return CompactApi::parseDecimal(buf, minValue, maxValue, value);
 }
 
 bool isValidUtf8(const char *text)
@@ -1685,28 +1520,21 @@ bool isValidUtf8(const char *text)
 
 bool readTextArg(const char *arg, char *value, size_t valueSize)
 {
-  if (!hasRequestArg(arg))
-    return true;
-  if (!v2Request && server.arg(arg).length() == 0 && valueSize > 0)
-  {
-    value[0] = '\0';
-    return true;
-  }
-  return getArg(arg, value, valueSize) && isValidUtf8(value);
+  const int found = findV2Value(arg, value, valueSize);
+  if (found <= 0)
+    return found == 0;
+  return isValidUtf8(value);
 }
 void respond(const char *msg)
 {
-  if (v2Request)
+  if (!strcmp(msg, "Error"))
   {
-    char body[96];
-    const bool ok = strcmp(msg, "Error") != 0;
-    snprintf(body, sizeof(body), "v=2\nok=%u\nresult=%s", ok ? 1 : 0, msg);
-    sendV2(ok ? 200 : 422, body);
+    sendV2Error(422, "arguments");
     return;
   }
-  char buf[128];
-  blur(msg, buf, sizeof(buf));
-  server.send(200, "text/plain", buf);
+  char body[96];
+  snprintf(body, sizeof(body), "v=2\nok=1\nresult=%s", msg);
+  sendV2(200, body);
 }
 uint8_t effectiveBrightness();
 void applySettings()
@@ -1739,35 +1567,55 @@ void applySettings()
       (config.scrollingSpeed <= 5) ? speeds[config.scrollingSpeed] : 40;
 }
 
+void invalidateChangedCalculations(const Configuration &next)
+{
+  if (next.latitude != config.latitude || next.longitude != config.longitude ||
+      next.prayerCalculationMethod != config.prayerCalculationMethod || next.asrMethod != config.asrMethod ||
+      next.timezoneOffset != config.timezoneOffset || next.daylightSavingTime != config.daylightSavingTime)
+    prayerCache.valid = false;
+  if (next.hijriDayCorrection != config.hijriDayCorrection)
+    hijriLastYear = -1;
+}
+
 bool installConfig(const Configuration &next, bool refreshDisplay)
 {
   if (!next.isValid() || !saveConfig(next))
     return false;
+  invalidateChangedCalculations(next);
   config = next;
   if (refreshDisplay)
     applySettings();
   return true;
 }
 
-bool installSettings(const Configuration &next, uint8_t nextMakkahIshaMode)
+bool installSettings(const Configuration &next, uint8_t nextMakkahIshaMode,
+                     bool nextUltraPowerSave, uint8_t nextPowerSaveBrightness)
 {
   if (!next.isValid() || !validMakkahIshaMode(nextMakkahIshaMode) ||
-      !saveConfig(next) || !savePrayerPrefs(nextMakkahIshaMode))
+      nextPowerSaveBrightness > 125 ||
+      !saveStorage([&]() {
+        stageConfig(next);
+        stagePrayerPrefs(nextMakkahIshaMode, nextUltraPowerSave);
+        stagePowerPrefs(nextPowerSaveBrightness);
+      }))
     return false;
+  invalidateChangedCalculations(next);
+  if (makkahIshaMode != nextMakkahIshaMode)
+    prayerCache.valid = false;
   config = next;
   makkahIshaMode = nextMakkahIshaMode;
+  ultraPowerSave = nextUltraPowerSave;
+  powerSaveBrightness = nextPowerSaveBrightness;
   return true;
 }
 
 void refreshAfterConfigChange()
 {
-  invalidateCaches(prayerCache, hijriLastYear, hijriLastMonth,
-                   hijriLastDay);
   calcHijri();
   calcPrayers();
   updatePrayerWindow(timeData.hour * 60 + timeData.min);
   dispState.setFirstShow(true);
-  dmd.clear();
+  clearDisplay();
   markDisplayDirty();
 }
 
@@ -1776,38 +1624,93 @@ void saveRespond(const Configuration &next, const char *ok,
 {
   if (!installConfig(next, refreshDisplay))
   {
-    respond("Error");
+    sendV2Error(500, "storage");
     return;
   }
   refreshAfterConfigChange();
   respond(ok);
 }
 
-// Auto power-save: dim to half brightness after Isha + powerSaveAfterIsha min,
+bool powerSaveWindowActive()
+{
+  if (!sysFlags.rtcOk() || !sysFlags.rtcTimeValid() || !prayerCache.valid ||
+      config.powerSaveAfterIsha <= 0 || config.powerSaveBeforeFajr <= 0)
+    return false;
+  const int nowMin = timeData.hour * 60 + timeData.min;
+  return nightWindowActive(nowMin, prayerCache.times[6], prayerCache.times[0],
+                           config.powerSaveAfterIsha, config.powerSaveBeforeFajr);
+}
+
+// The same night window used for dimming also gates the optional ultra mode.
+// The panel shows a dim breathing dot/diamond; RTC/Wi-Fi continue running so
+// the clock remains reachable and exits automatically at Fajr.
+bool ultraPowerSaveActive()
+{
+  return ultraPowerSave && powerSaveWindowActive();
+}
+
+bool updateUltraPowerSaveDisplay()
+{
+  static bool active = false;
+  static uint8_t lastPhase = 255;
+  static uint32_t lastRevision = UINT32_MAX;
+  const bool next = ultraPowerSaveActive();
+  if (!next)
+  {
+    if (active)
+    {
+      active = false;
+      lastPhase = 255;
+      dispState.setStopCards(false);
+      dispState.setFirstShow(true);
+      clearDisplay();
+      applySettings();
+      markDisplayDirty();
+    }
+    return false;
+  }
+
+  if (!active || lastRevision != displayRevision)
+  {
+    active = true;
+    lastPhase = 255;
+    dispState.setStopCards(true);
+    clearDisplay();
+    dmd.setPixel(DISPLAY_PROFILE.width / 2, DISPLAY_PROFILE.height / 2,
+                 Bitmap::White);
+    lastRevision = displayRevision;
+    markDisplayDirty();
+  }
+
+  // One centered pixel is the quietest reliable heartbeat. Brightness fades
+  // up and down smoothly without changing the framebuffer (no flicker).
+  static const uint8_t level[] = {2, 3, 4, 5, 6, 7, 8, 9,
+                                  10, 9, 8, 7, 6, 5, 4, 3};
+  const uint8_t phase = (millis() / 120UL) & 0x0F;
+  if (phase == lastPhase)
+    return true;
+  lastPhase = phase;
+  dmd.setBrightness(level[phase]);
+  return true;
+}
+
+// Auto power-save: use configured night brightness after Isha + offset,
 // exit before Fajr - powerSaveBeforeFajr min.
 uint8_t effectiveBrightness()
 {
-  if (!sysFlags.rtcOk() || !prayerCache.valid)
-    return config.brightness;
-  int nowMin = timeData.hour * 60 + timeData.min;
-  int isha = prayerCache.times[6]; // Isha (minutes)
-  int fajr = prayerCache.times[0]; // Fajr (minutes)
-  int start = isha + config.powerSaveAfterIsha;
-  while (start >= 1440)
-    start -= 1440;
-  int end = fajr - config.powerSaveBeforeFajr;
-  while (end <= start)
-    end += 1440;
-  bool powerSave = minuteInWindow(nowMin, start, end);
-  return powerSave && config.brightness > 1 ? (config.brightness / 2)
-                                             : config.brightness;
+  if (ultraPowerSaveActive())
+    return 1;
+  const bool powerSave = powerSaveWindowActive();
+  return powerSave ? powerSaveBrightness : config.brightness;
 }
 
 void handleNotFound() { server.send(404, "text/plain", "404"); }
 void handleRoot() { server.send(200, "text/plain", "Basit"); }
 void handleCheckUpdate()
 {
-  server.send(200, "text/plain", "update,P,104,6,good");
+  // Keep the advertised API version aligned with the Android firmware map.
+  // Earlier P104 images report 11 and will therefore be offered this update.
+  server.send(200, "text/plain", "update,P,104,12,good");
 }
 void handleTestMode()
 {
@@ -1844,50 +1747,38 @@ bool appendV2Field(char *body, size_t bodySize, const char *key,
 
 void handleGetData()
 {
-  static char buf[640], out[2400];
-  if (v2Request)
+  static char buf[384], out[1152]; // Worst escaped response measured below 1.1KB.
+  char nightBrightnessText[5];
+  snprintf(nightBrightnessText, sizeof(nightBrightnessText), "%u",
+           powerSaveBrightness);
+  const int written = snprintf(
+      buf, sizeof(buf),
+      "v=2\nok=1\ndeviceId=%u\nprofile=%ux1\nmustChangePassword=%u\nfont=%u\nlang=%d\nhjc=%d\nf=%d\ns=%d\nz=%d\na=%d\nm=%d\ne=%d\ncountry=%d\ngovernment=%d\nlat=%.4f\nlon=%.4f\nprayerMethod=%d\nasrMethod=%d\ntimezoneOffset=%d\ndaylightSavingTime=%d\nspt=%d\nsgt=%d\nbri=%u\ntS=%u\nfS=%u\npsai=%d\npsbf=%d\ncity=%d",
+      ESP.getChipId(), DISPLAYS_WIDE, config.mustChangePassword,
+      config.fontFamily, config.language, config.hijriDayCorrection,
+      config.eqamaFajr, config.eqamaShrouq, config.eqamaZohr, config.eqamaAsr,
+      config.eqamaMaghrib, config.eqamaEsha, config.country, config.government,
+      config.latitude, config.longitude, config.prayerCalculationMethod, config.asrMethod,
+      config.timezoneOffset, config.daylightSavingTime, config.sleepPrayerTime,
+      config.sleepGomaaTime, config.brightness, config.scrollingSpeed,
+      config.isSmallFont, config.powerSaveAfterIsha,
+      config.powerSaveBeforeFajr, config.city);
+  if (written < 0 || size_t(written) >= sizeof(buf))
   {
-    snprintf(
-        buf, sizeof(buf),
-        "v=2\ndeviceId=%u\nprofile=%ux1\nmustChangePassword=%u\nfont=%u\nlang=%d\nhjc=%d\nf=%d\ns=%d\nz=%d\na=%d\nm=%d\ne=%d\ncountry=%d\ngovernment=%d\nlat=%.4f\nlon=%.4f\ncm=%d\nwm=%d\ndst=%d\nsummerTime=%d\nspt=%d\nsgt=%d\nbri=%u\ntS=%u\nfS=%u\npsai=%d\npsbf=%d\ncity=%d",
-        ESP.getChipId(), DISPLAYS_WIDE, config.mustChangePassword,
-        config.fontFamily, config.language, config.hijriDayCorrection,
-        config.eqamaFajr, config.eqamaShrouq, config.eqamaZohr, config.eqamaAsr,
-        config.eqamaMagrb, config.eqamaEsha, config.country, config.government,
-        config.latitude, config.longitude, config.calcMethod, config.wayMethod,
-        config.dst, config.summerTime,
-        config.sleepPrayerTime, config.sleepGomaaTime, config.brightness,
-        config.scrollingSpeed, config.isSmallFont,
-        config.powerSaveAfterIsha, config.powerSaveBeforeFajr, config.city);
-    safeCopy(out, buf, sizeof(out));
-    if (!appendV2Field(out, sizeof(out), "hour24", config.hour24 ? "1" : "0") ||
-        !appendV2Field(out, sizeof(out), "digits", config.digitStyle ? "1" : "0") ||
-        !appendV2Field(out, sizeof(out), "makkahIsha",
-                       makkahIshaMode ? "1" : "0"))
-    {
-      sendV2Error(500, "response_too_large");
-      return;
-    }
-    if (!appendV2Field(out, sizeof(out), "masjedName", config.masjedName) ||
-        !appendV2Field(out, sizeof(out), "message", config.message))
-      sendV2Error(500, "response_too_large");
-    else
-      sendV2(200, out);
-    dispState.setFirstShow(true);
+    sendV2Error(500, "response_too_large");
     return;
   }
-  snprintf(
-      buf, sizeof(buf),
-      "Data,%d,%d,%d,%d,%d,%d,%d,%d,%.4f,%.4f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
-      config.hijriDayCorrection, config.eqamaFajr, config.eqamaZohr,
-      config.eqamaAsr, config.eqamaMagrb, config.eqamaEsha, config.country,
-      config.government, config.latitude, config.longitude, config.calcMethod,
-      config.wayMethod, config.dst, config.sleepPrayerTime,
-      config.sleepGomaaTime, config.brightness, config.wifiPassword,
-      config.scrollingSpeed, config.summerTime, config.isSmallFont,
-      config.powerSaveAfterIsha, config.powerSaveBeforeFajr, config.city);
-  blur(buf, out, sizeof(out));
-  server.send(200, "text/plain", out);
+  safeCopy(out, buf, sizeof(out));
+  if (!appendV2Field(out, sizeof(out), "hour24", config.hour24 ? "1" : "0") ||
+      !appendV2Field(out, sizeof(out), "digits", config.digitStyle ? "1" : "0") ||
+      !appendV2Field(out, sizeof(out), "makkahIsha", makkahIshaMode ? "1" : "0") ||
+      !appendV2Field(out, sizeof(out), "eco", ultraPowerSave ? "1" : "0") ||
+      !appendV2Field(out, sizeof(out), "nbri", nightBrightnessText) ||
+      !appendV2Field(out, sizeof(out), "masjedName", config.masjedName) ||
+      !appendV2Field(out, sizeof(out), "message", config.message))
+    sendV2Error(500, "response_too_large");
+  else
+    sendV2(200, out);
   dispState.setFirstShow(true);
 }
 
@@ -1931,57 +1822,88 @@ void handleSetCardSettings()
     respond("Error");
     return;
   }
-  cardEnabledMask = mask;
-  memcpy(cardOrder, order, sizeof(cardOrder));
-  if (!saveCardPrefs())
+  if (!saveStorage([&]() { stageCardPrefs(mask, order); }))
   {
-    respond("Error");
+    sendV2Error(500, "storage");
     return;
   }
+  cardEnabledMask = mask;
+  memcpy(cardOrder, order, sizeof(cardOrder));
   dispState.cardNum = CardScheduler::firstIndex(cardOrder, cardEnabledMask) + 1;
   dispState.setFirstShow(true);
   smartText.reset();
-  dmd.clear();
+  clearDisplay();
   markDisplayDirty();
   respond("cardSettingsOk");
 }
 
 void handleSetDateTime()
 {
-  if (!sysFlags.rtcOk() && !beginRTCDevice(true))
-  {
-    respond("Error");
-    return;
-  }
   Configuration next = config;
-  int year = timeData.year >= MIN_VALID_YEAR ? timeData.year : MIN_VALID_YEAR;
-  int month = timeData.month >= 1 ? timeData.month : 1;
-  int day = timeData.day >= 1 ? timeData.day : 1;
-  int hour = timeData.hour;
-  int minute = timeData.min;
-  int second = timeData.sec;
-  if (!readIntArg("y", year, MIN_VALID_YEAR, 2099) ||
-      !readIntArg("m", month, 1, 12) || !readIntArg("d", day, 1, 31) ||
-      !readIntArg("h", hour, 0, 23) || !readIntArg("mi", minute, 0, 59) ||
-      !readIntArg("s", second, 0, 59) ||
+  int year = CivilTime::MIN_YEAR, month = 1, day = 1, hour = 0, minute = 0, second = 0;
+  if (!readIntArg("y", year, CivilTime::MIN_YEAR, CivilTime::MAX_YEAR, true) ||
+      !readIntArg("m", month, 1, 12, true) || !readIntArg("d", day, 1, 31, true) ||
+      !readIntArg("h", hour, 0, 23, true) || !readIntArg("mi", minute, 0, 59, true) ||
+      !readIntArg("s", second, 0, 59, true) ||
       !readIntArg("hjc", next.hijriDayCorrection, -3, 3) ||
-      !readIntArg("st", next.summerTime, 0, 1) ||
-      !readIntArg("dst", next.dst, -12, 14) || day > daysInMonth(year, month) ||
+      !readIntArg("daylightSavingTime", next.daylightSavingTime, 0, 1) ||
+      !readIntArg("timezoneOffset", next.timezoneOffset, -12, 14) ||
+      !readIntArg("hour24", next.hour24, 0, 1) ||
+      !CivilTime::validDate(year, month, day) ||
       !next.isValid())
   {
     respond("Error");
     return;
   }
   DateTime dt(year, month, day, hour, minute, second);
-  if (next.summerTime == 1 && isDST(dt.year(), dt.month(), dt.day()))
+  const DateTime requested = dt;
+  if (next.daylightSavingTime == 1 && isDST(dt.year(), dt.month(), dt.day()))
     dt = dt - TimeSpan(0, 1, 0, 0);
-  if (!installConfig(next, false))
+  // Retain the approved base-date seasonal rule, but never silently accept
+  // a local time inside its spring gap that cannot round-trip.
+  const bool daylightSavingAtRtc = next.daylightSavingTime == 1 && isDST(dt.year(), dt.month(), dt.day());
+  if (dt.year() < CivilTime::MIN_YEAR ||
+      (daylightSavingAtRtc ? dt + TimeSpan(0, 1, 0, 0) : dt) != requested)
   {
     respond("Error");
     return;
   }
+  if (!sysFlags.rtcOk() && !beginRTCDevice(true))
+  {
+    sendV2Error(422, "rtc");
+    return;
+  }
   sysFlags.setRtc(true);
+  DateTime previous;
+  const bool hadPrevious = readRtcTime(previous);
+  const bool wasAdjustmentRequired = rtcAdjustmentRequired;
+  const auto restorePrevious = [&]() {
+    rtcAdjustmentRequired = wasAdjustmentRequired || !hadPrevious;
+    if (hadPrevious)
+    {
+      rtc.adjust(previous);
+      DateTime restored;
+      if (!readRtcTime(restored) || restored < previous ||
+          (restored - previous).totalseconds() > 2)
+        rtcAdjustmentRequired = true;
+    }
+    syncRTC();
+  };
   rtc.adjust(dt);
+  DateTime verified;
+  if (!readRtcTime(verified) || verified < dt || (verified - dt).totalseconds() > 2)
+  {
+    restorePrevious();
+    sendV2Error(422, "rtc");
+    return;
+  }
+  if (!installConfig(next, false))
+  {
+    restorePrevious();
+    sendV2Error(500, "storage");
+    return;
+  }
+  rtcAdjustmentRequired = false;
   syncRTC();
   refreshAfterConfigChange();
   respond("dateTimeOk");
@@ -1993,7 +1915,7 @@ void handleSetEqama()
       !readIntArg("s", next.eqamaShrouq, 0, 120) ||
       !readIntArg("z", next.eqamaZohr, 0, 120) ||
       !readIntArg("a", next.eqamaAsr, 0, 120) ||
-      !readIntArg("m", next.eqamaMagrb, 0, 120) ||
+      !readIntArg("m", next.eqamaMaghrib, 0, 120) ||
       !readIntArg("e", next.eqamaEsha, 0, 120))
   {
     respond("Error");
@@ -2006,9 +1928,9 @@ void handleSetLocation()
   Configuration next = config;
   if (!readIntArg("c", next.country, INT16_MIN, INT16_MAX) ||
       !readIntArg("g", next.government, INT16_MIN, INT16_MAX) ||
-      !readIntArg("ct", next.city, INT16_MIN, INT16_MAX) ||
-      !readFloatArg("lat", next.latitude, -90.0f, 90.0f) ||
-      !readFloatArg("lon", next.longitude, -180.0f, 180.0f))
+      !readIntArg("ct", next.city, 0, INT32_MAX) ||
+      !readFloatArg("lat", next.latitude, -90.0f, 90.0f, true) ||
+      !readFloatArg("lon", next.longitude, -180.0f, 180.0f, true))
   {
     respond("Error");
     return;
@@ -2019,24 +1941,29 @@ void handleSetSettings()
 {
   Configuration next = config;
   uint8_t nextMakkahIshaMode = makkahIshaMode;
-  if (!readIntArg("cm", next.calcMethod, 0, 4) ||
-      !readIntArg("wm", next.wayMethod, 0, 1) ||
+  int nextUltraPowerSave = ultraPowerSave ? 1 : 0;
+  int nextPowerSaveBrightness = powerSaveBrightness;
+  if (!readIntArg("prayerMethod", next.prayerCalculationMethod, 0, 4) ||
+      !readIntArg("asrMethod", next.asrMethod, 0, 1) ||
       !readIntArg("spt", next.sleepPrayerTime, 0, 120) ||
       !readIntArg("sgt", next.sleepGomaaTime, 0, 120) ||
       !readIntArg("bri", next.brightness, 0, 255) ||
       !readIntArg("psai", next.powerSaveAfterIsha, 0, 720) ||
       !readIntArg("psbf", next.powerSaveBeforeFajr, 0, 720) ||
+      !readIntArg("nbri", nextPowerSaveBrightness, 0, 125) ||
       !readIntArg("digits", next.digitStyle, 0, 1) ||
       !readIntArg("hour24", next.hour24, 0, 1) ||
       !readIntArg("lang", next.language, LANG_AR, LANG_EN) ||
-      !readIntArg("makkahIsha", nextMakkahIshaMode, 0, 1))
+      !readIntArg("makkahIsha", nextMakkahIshaMode, 0, 1) ||
+      !readIntArg("eco", nextUltraPowerSave, 0, 1))
   {
     respond("Error");
     return;
   }
-  if (!installSettings(next, nextMakkahIshaMode))
+  if (!installSettings(next, nextMakkahIshaMode, nextUltraPowerSave != 0,
+                       static_cast<uint8_t>(nextPowerSaveBrightness)))
   {
-    respond("Error");
+    sendV2Error(500, "storage");
     return;
   }
   applySettings();
@@ -2057,6 +1984,23 @@ void handleSetMessage()
   saveRespond(next, "messageOk", true);
 }
 
+void handleSetDisplay()
+{
+  Configuration next = config;
+  if (!readIntArg("font", next.fontFamily, 0, 1) ||
+      !readIntArg("digits", next.digitStyle, 0, 1) ||
+      !readIntArg("lang", next.language, LANG_AR, LANG_EN) ||
+      !readIntArg("tS", next.scrollingSpeed, 0, 5) ||
+      !readIntArg("fS", next.isSmallFont, 0, 1) ||
+      !readTextArg("sms", next.message, sizeof(next.message)) ||
+      !readTextArg("mN", next.masjedName, sizeof(next.masjedName)))
+  {
+    respond("Error");
+    return;
+  }
+  saveRespond(next, "displayOk", true);
+}
+
 void handleSetFont()
 {
   Configuration next = config;
@@ -2070,7 +2014,7 @@ void handleSetFont()
   }
   dispState.setFirstShow(true);
   smartText.reset();
-  dmd.clear();
+  clearDisplay();
   markDisplayDirty();
   respond("fontOk");
 }
@@ -2088,10 +2032,10 @@ bool isValidApPassword(const char *password)
 
 void handleV2SetNetwork()
 {
-  if (!beginV2("/v2/setNetwork", true))
+  if (!beginV2("/setNetwork", true))
     return;
   char password[64];
-  if (!findV2Value("password", password, sizeof(password)) ||
+  if (findV2Value("password", password, sizeof(password)) != 1 ||
       !isValidApPassword(password))
   {
     sendV2Error(422, "password");
@@ -2117,19 +2061,40 @@ void handleV2SetNetwork()
   sysFlags.restartAt = millis() + MS_RESTART_DELAY;
 }
 
+// Unified API name used by both display families.
+void handleV2SetPassword() { handleV2SetNetwork(); }
+
+void handleV2ResetDefault()
+{
+  if (!beginV2("/resetDefault", true))
+    return;
+  if (!resetConfig())
+  {
+    sendV2Error(500, "storage");
+    endV2();
+    return;
+  }
+  sendV2(200, "v=2\nok=1\nresult=resetDefaultOk\nrestart=1");
+  server.client().flush();
+  yield();
+  endV2();
+  sysFlags.setRestart(true);
+  sysFlags.restartAt = millis() + MS_RESTART_DELAY;
+}
+
 void handleV2Health()
 {
-  if (!beginV2("/v2/health", true))
+  if (!beginV2("/health", true))
     return;
   const unsigned long nowMs = millis();
   const unsigned long syncAge = lastRtcSyncMs ? (nowMs - lastRtcSyncMs) / 1000UL : 0xFFFFFFFFUL;
   char body[384];
   snprintf(body, sizeof(body),
-           "v=2\nok=1\nfw=%s\nconfig=%u\nreset=%s\nresetInfo=%s\nuptime=%lu\nheap=%u\nmaxBlock=%u\nfragmentation=%u\nrtc=%u\nrssi=%d\napClients=%u\nsyncAge=%lu\nprofile=%ux1",
+           "v=2\nok=1\nfw=%s\nconfig=%u\nreset=%s\nresetInfo=%s\nuptime=%lu\nheap=%u\nmaxBlock=%u\nfragmentation=%u\nrtc=%u\ntimeValid=%u\nrssi=%d\napClients=%u\nsyncAge=%lu\nprofile=%ux1",
            FIRMWARE_VERSION, EEPROM_VERSION, resetReason, resetInfo,
            nowMs / 1000UL,
            ESP.getFreeHeap(), ESP.getMaxFreeBlockSize(),
-           ESP.getHeapFragmentation(), sysFlags.rtcOk(),
+           ESP.getHeapFragmentation(), sysFlags.rtcOk(), sysFlags.rtcTimeValid(),
            WiFi.RSSI(), WiFi.softAPgetStationNum(), syncAge, DISPLAYS_WIDE);
   sendV2(200, body);
   endV2();
@@ -2137,18 +2102,19 @@ void handleV2Health()
 
 void handleSelfTest()
 {
-  if (!beginV2("/v2/selfTest", true))
+  if (!beginV2("/selfTest", true))
     return;
   const uint16_t heap = ESP.getFreeHeap();
   const bool configOk = config.isValid();
   const bool rtcOk = sysFlags.rtcOk();
+  const bool timeValid = sysFlags.rtcTimeValid();
   const bool wifiOk = WiFi.getMode() == WIFI_AP || WiFi.getMode() == WIFI_AP_STA;
   const bool heapOk = heap >= 12000;
-  const bool ok = configOk && rtcOk && displayReady && wifiOk && heapOk;
+  const bool ok = configOk && rtcOk && timeValid && displayReady && wifiOk && heapOk;
   char body[256];
   snprintf(body, sizeof(body),
-           "v=2\nok=%u\nconfig=%u\nrtc=%u\ndisplay=%u\nwifi=%u\nheap=%u\nprofile=%ux1\nreset=%s",
-           ok, configOk, rtcOk, displayReady, wifiOk, heap, DISPLAYS_WIDE,
+           "v=2\nok=%u\nconfig=%u\nrtc=%u\ntimeValid=%u\ndisplay=%u\nwifi=%u\nheap=%u\nprofile=%ux1\nreset=%s",
+           ok, configOk, rtcOk, timeValid, displayReady, wifiOk, heap, DISPLAYS_WIDE,
            resetReason);
   // Keep the transport successful so the factory app can display every failed
   // check; the semantic result is carried by the compact `ok` field.
@@ -2163,57 +2129,76 @@ void runV2(const char *path, void (*handler)(), bool allowBeforeChange = false)
   handler();
   endV2();
 }
-void handleV2GetData() { runV2("/v2/getData", handleGetData, true); }
-void handleV2SetDateTime() { runV2("/v2/setDateTime", handleSetDateTime); }
-void handleV2SetEqama() { runV2("/v2/setEqama", handleSetEqama); }
-void handleV2SetLocation() { runV2("/v2/setLocation", handleSetLocation); }
-void handleV2SetSettings() { runV2("/v2/setSettings", handleSetSettings); }
-void handleV2SetMessage() { runV2("/v2/setMessage", handleSetMessage); }
-void handleV2GetCardSettings() { runV2("/v2/getCardSettings", handleGetCardSettings, true); }
-void handleV2SetCardSettings() { runV2("/v2/setCardSettings", handleSetCardSettings); }
-void handleV2SetFont() { runV2("/v2/setFont", handleSetFont); }
-void handleV2TestMode() { runV2("/v2/testMode", handleTestMode); }
+void handleV2GetData() { runV2("/getData", handleGetData, true); }
+void handleV2SetDateTime() { runV2("/setDateTime", handleSetDateTime); }
+void handleV2SetEqama() { runV2("/setEqama", handleSetEqama); }
+void handleV2SetLocation() { runV2("/setLocation", handleSetLocation); }
+void handleV2SetSettings() { runV2("/setSettings", handleSetSettings); }
+void handleV2SetMessage() { runV2("/setMessage", handleSetMessage); }
+void handleV2SetDisplay() { runV2("/setDisplay", handleSetDisplay); }
+void handleV2GetCardSettings() { runV2("/getCardSettings", handleGetCardSettings, true); }
+void handleV2SetCardSettings() { runV2("/setCardSettings", handleSetCardSettings); }
+void handleV2SetFont() { runV2("/setFont", handleSetFont); }
+void handleV2TestMode() { runV2("/testMode", handleTestMode); }
 void handleV2SelfTest() { handleSelfTest(); }
 
-static bool otaV2Upload = false;
-static bool otaRejected = false;
-static uint32_t otaExpectedSize = 0;
-static uint32_t otaReceivedSize = 0;
-static char otaError[24] = "ota_error";
-static BearSSL::PublicKey otaPublicKey(OTA_VENDOR_PUBLIC_KEY_PEM);
-static BearSSL::HashSHA256 otaSignatureHash;
-// OTA carries a fixed-width raw P-256 signature: r||s = 64 bytes. BearSSL's
-// PEM parser stores the EC point without its SEC1 0x04 prefix; add it only
-// while verifying because the raw verifier requires the full 65-byte point.
-class OtaSigningVerifier : public BearSSL::SigningVerifier
-{
-public:
-  explicit OtaSigningVerifier(BearSSL::PublicKey *key) : SigningVerifier(key) {}
-  uint32_t length() override { return 64; }
-  bool verify(UpdaterHashClass *hash, const void *signature,
-              uint32_t signatureLen) override
-  {
-    if (!hash || !signature || signatureLen != length() || !otaPublicKey.isEC())
-      return false;
-    const br_ec_public_key *parsedKey = otaPublicKey.getEC();
-    if (!parsedKey || parsedKey->qlen != 64)
-      return false;
-    uint8_t point[65];
-    point[0] = 0x04;
-    memcpy(point + 1, parsedKey->q, 64);
-    br_ec_public_key verifierKey = *parsedKey;
-    verifierKey.q = point;
-    verifierKey.qlen = sizeof(point);
-    br_ecdsa_vrfy verifier = br_ecdsa_vrfy_raw_get_default();
-    return verifier(br_ec_get_default(), hash->hash(), hash->len(),
-                    &verifierKey,
-                    static_cast<const unsigned char *>(signature), signatureLen) != 0;
-  }
-};
-static OtaSigningVerifier otaSignatureVerifier(&otaPublicKey);
 static bool otaSuccessPendingRestart = false;
 static bool otaSuccessFrameReady = false;
 static char otaSuccessText[BUF_SMALL];
+static WiFiUDP otaProgressUdp;
+static IPAddress otaProgressPeer;
+static uint16_t otaProgressPort = 0;
+static uint8_t otaProgressSent = 255;
+static uint32_t otaExpectedSize = 0;
+static uint32_t otaReceivedSize = 0;
+static bool otaSizeProvided = false;
+static bool otaUploadComplete = false;
+static bool otaFileSeen = false;
+static uint8_t otaTracePercent = 0;
+
+static const char *otaUpdateError(const char *fallback)
+{
+  switch (Update.getError())
+  {
+  case UPDATE_ERROR_SPACE: return "space";
+  case UPDATE_ERROR_SIZE:
+  case UPDATE_ERROR_NO_DATA: return "incomplete";
+  case UPDATE_ERROR_ERASE:
+  case UPDATE_ERROR_WRITE:
+  case UPDATE_ERROR_READ: return "write";
+  case UPDATE_ERROR_OOM: return "memory";
+  case UPDATE_ERROR_MAGIC_BYTE:
+  case UPDATE_ERROR_FLASH_CONFIG:
+  case UPDATE_ERROR_NEW_FLASH_CONFIG: return "image";
+  default: return fallback;
+  }
+}
+
+static void cancelOtaUpdate()
+{
+  if (!Update.isRunning()) return;
+  // This installed ESP8266 core has no abort(). Force its bounds error
+  // before end(), even if all expected bytes arrived without a closing
+  // multipart boundary. write() rejects this size before reading the byte.
+  uint8_t unused = 0;
+  Update.write(&unused, Update.remaining() + 1);
+  Update.end();
+}
+
+void sendOtaProgress(uint8_t progress)
+{
+  if (!otaProgressPort || progress == otaProgressSent)
+    return;
+  char message[8];
+  snprintf(message, sizeof(message), "p=%u", progress);
+  if (otaProgressUdp.beginPacket(otaProgressPeer, otaProgressPort))
+  {
+    otaProgressUdp.write(reinterpret_cast<const uint8_t *>(message), strlen(message));
+    otaProgressUdp.endPacket();
+    otaProgressSent = progress;
+  }
+}
+
 void drawOtaLine(PGM_P text, int8_t y, const char *fallback = nullptr)
 {
   char logical[BUF_SMALL];
@@ -2225,80 +2210,34 @@ void drawOtaLine(PGM_P text, int8_t y, const char *fallback = nullptr)
                   y, otaSuccessText);
 }
 
-void otaFail(const char *error)
+void otaFail()
 {
-  otaRejected = true;
   otaSuccessPendingRestart = false;
   otaSuccessFrameReady = false;
-  safeCopy(otaError, error, sizeof(otaError));
-  if (sysFlags.updateNow())
-    Update.end();
+  otaUploadComplete = false;
+  cancelOtaUpdate();
   dmd.resume();
   sysFlags.setUpdate(false);
   dispState.setStopCards(false);
   dispState.setFirstShow(true);
   applySettings();
-  dmd.clear();
+  clearDisplay();
   markDisplayDirty();
 }
 
-bool validHexSha256(const char *text)
-{
-  if (!text || strlen(text) != 64)
-    return false;
-  for (uint8_t i = 0; i < 64; ++i)
-    if (!isxdigit((unsigned char)text[i]))
-      return false;
-  return true;
-}
-
-bool authorizeOtaV2()
-{
-  if (!server.hasArg("profile") || !server.hasArg("version") ||
-      !server.hasArg("size") || !server.hasArg("sha256"))
-  {
-    otaFail("manifest");
-    return false;
-  }
-  String profile = server.arg("profile");
-  String version = server.arg("version");
-  String size = server.arg("size");
-  String hash = server.arg("sha256");
-  char expectedProfile[12];
-  snprintf(expectedProfile, sizeof(expectedProfile), "%ux1", DISPLAYS_WIDE);
-  long parsedVersion = 0;
-  long parsedSize = 0;
-  if (profile != expectedProfile ||
-      !parseLongValue(version.c_str(), 1, LONG_MAX, parsedVersion) ||
-      !parseLongValue(size.c_str(), 1, LONG_MAX, parsedSize) ||
-      static_cast<unsigned long>(parsedSize) >
-          (ESP.getFreeSketchSpace() - 0x1000) ||
-      !validHexSha256(hash.c_str()))
-  {
-    otaFail("manifest");
-    return false;
-  }
-
-  // AP password is the only access control; image signature still protects
-  // firmware integrity and authenticity.
-  v2Request = true;
-  otaExpectedSize = parsedSize;
-  otaReceivedSize = 0;
-  return true;
-}
-
 bool otaSucceeded = false;
+static const char *otaErrorCode = "unknown";
 
 void renderOtaSuccess()
 {
   if (!otaSuccessFrameReady)
   {
     dmd.setFont(BasitFont7);
-    dmd.clear();
+    clearDisplay();
     drawOtaLine(config.language == LANG_EN ? OTA_SUCCESS_EN : OTA_SUCCESS_AR, 4);
     if (displayTextWidth(otaSuccessText) > DISPLAY_PROFILE.width)
     {
-      dmd.clear();
+      clearDisplay();
       drawOtaLine(config.language == LANG_EN ? OTA_PROGRESS_EN : OTA_SUCCESS_SHORT_AR,
                   0, "OTA");
       if (config.language == LANG_EN)
@@ -2314,46 +2253,31 @@ void renderOtaSuccess()
 
 void handleOTAComplete()
 {
-  if (otaV2Upload)
+  // Finalize only after the entire multipart request, not just its file part.
+  if (sysFlags.updateNow() && otaUploadComplete &&
+      (!otaSizeProvided || otaReceivedSize == otaExpectedSize))
   {
-    bool ok = otaSucceeded && !otaRejected && !Update.hasError();
-    if (ok)
-    {
-      server.client().setNoDelay(true);
-      sendV2(200, "v=2\nok=1\nresult=updateOk\nrestart=1");
-      // Finish the HTTP response before the delayed reboot closes the AP socket.
-      server.client().flush();
-      delay(100);
-      server.client().stop();
-      yield();
-      endV2();
-      otaV2Upload = false;
-      otaSucceeded = false;
-      sysFlags.setUpdate(false);
-      otaSuccessPendingRestart = true;
-      otaSuccessFrameReady = false;
-      dispState.setStopCards(true);
-      dmd.resume();
-      sysFlags.setRestart(true);
-      sysFlags.restartAt = millis() + MS_OTA_RESTART_DELAY;
-    }
-    else
-    {
-      if (v2Request)
-        sendV2Error(422, otaError);
-      else
-        server.send(422, "text/plain", otaError);
-      endV2();
-      otaV2Upload = false;
-      otaSucceeded = false;
-    }
-    return;
+    otaSucceeded = Update.end(true); // legacy contract: commit actual bytes received
+    if (otaSucceeded) sendOtaProgress(99);
+    else otaErrorCode = otaUpdateError("end");
   }
   bool ok = otaSucceeded && !Update.hasError();
-  server.send(200, "text/plain",
-              ok ? "UpdateOk" : "UpdateError");
+#if DEBUG
+  Serial.printf("OTA complete: ok=%u error=%s\n", ok, ok ? "none" : otaErrorCode);
+#endif
+  if (ok)
+    server.send(200, "text/plain", "UpdateOk");
+  else
+  {
+    char reply[32];
+    snprintf(reply, sizeof(reply), "UpdateError:%s", otaErrorCode);
+    server.send(400, "text/plain", reply);
+  }
   sysFlags.setUpdate(false);
   otaSucceeded = false;
+  otaUploadComplete = false;
+  otaFileSeen = false;
+  otaSizeProvided = false;
   if (ok)
   {
     otaSuccessPendingRestart = true;
@@ -2365,12 +2289,7 @@ void handleOTAComplete()
   }
   else
   {
-    otaSuccessPendingRestart = false;
-    otaSuccessFrameReady = false;
-    dispState.setStopCards(false);
-    dispState.setFirstShow(true);
-    dmd.resume();
-    applySettings();
+    otaFail();
   }
 }
 void handleOTAUpload()
@@ -2378,100 +2297,129 @@ void handleOTAUpload()
   HTTPUpload &upload = server.upload();
   if (upload.status == UPLOAD_FILE_START)
   {
+    if (otaFileSeen || Update.isRunning())
+    {
+      otaErrorCode = "image"; // multiple file parts are not an OTA image
+      otaFail();
+      return;
+    }
+    otaFileSeen = true;
     otaSucceeded = false;
-    otaV2Upload = server.uri() == "/v2/update";
-    otaRejected = false;
+    otaUploadComplete = false;
+    otaReceivedSize = otaExpectedSize = 0;
+    otaSizeProvided = false;
+    otaErrorCode = "incomplete";
+    const String sizeText = server.hasArg("size") ? server.arg("size") : String();
+    if (!sizeText.isEmpty())
+    {
+      if (sizeText.length() > 10) return;
+      for (unsigned int i = 0; i < sizeText.length(); ++i)
+      {
+        if (sizeText[i] < '0' || sizeText[i] > '9') return;
+        const uint8_t digit = sizeText[i] - '0';
+        if (otaExpectedSize > (UINT32_MAX - digit) / 10) return;
+        otaExpectedSize = otaExpectedSize * 10 + digit;
+      }
+      if (!otaExpectedSize) return;
+      otaSizeProvided = true;
+    }
+    const uint32_t available = ESP.getFreeSketchSpace();
+    const uint32_t capacity = available > 0x1000 ? ((available - 0x1000) & 0xFFFFF000) : 0;
+    if (!otaSizeProvided) otaExpectedSize = capacity;
+    if (otaExpectedSize > capacity)
+    {
+      otaErrorCode = "space";
+      return;
+    }
+    otaProgressPort = 0;
+    if (server.hasArg("up"))
+    {
+      const long port = server.arg("up").toInt();
+      if (port >= 1024 && port <= 65535)
+      {
+        otaProgressPort = static_cast<uint16_t>(port);
+        otaProgressPeer = server.client().remoteIP();
+      }
+    }
+    otaProgressSent = 255;
+    otaTracePercent = 0;
+    sendOtaProgress(0);
     otaSuccessPendingRestart = false;
     otaSuccessFrameReady = false;
-    otaExpectedSize = otaReceivedSize = 0;
-    otaError[0] = '\0';
-    if (otaV2Upload && !authorizeOtaV2())
-      return;
-    if (!otaV2Upload && server.hasArg("size"))
-    {
-      long size;
-      if (!parseLongValue(server.arg("size").c_str(), 1,
-                          (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000, size))
-      {
-        otaFail("size");
-        return;
-      }
-      otaExpectedSize = uint32_t(size);
-    }
     DBGLN(F("OTA Start"));
     dispState.setStopCards(true);
     dmd.pause();
-    uint32_t updateSize = otaV2Upload
-                              ? otaExpectedSize
-                              : ((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000);
-    if (otaV2Upload)
-      Update.installSignature(&otaSignatureHash, &otaSignatureVerifier);
-    else
-      Update.installSignature(nullptr, nullptr);
-    bool started = !otaRejected && Update.begin(updateSize);
+    Update.installSignature(nullptr, nullptr);
+    otaErrorCode = "incomplete";
+    bool started = Update.begin(otaExpectedSize);
+#if DEBUG
+    Serial.printf("OTA begin: ok=%u expected=%u free=%u heap=%u\n", started,
+                  otaExpectedSize, ESP.getFreeSketchSpace(), ESP.getFreeHeap());
+#endif
     sysFlags.setUpdate(started);
     if (!started)
     {
+      otaErrorCode = otaUpdateError("begin");
       Update.printError(Serial);
       dispState.setStopCards(false);
-      otaFail("storage");
+      otaFail();
     }
   }
   else if (upload.status == UPLOAD_FILE_WRITE)
   {
-    if (otaRejected || !sysFlags.updateNow())
+    if (!sysFlags.updateNow())
       return;
-    if (otaExpectedSize && upload.currentSize > otaExpectedSize - otaReceivedSize)
+    if (otaUploadComplete || upload.currentSize > otaExpectedSize - otaReceivedSize)
     {
-      otaFail("size");
+      otaErrorCode = "oversize";
+      otaFail();
       return;
     }
     if (Update.write(upload.buf, upload.currentSize) != upload.currentSize)
     {
+      otaErrorCode = otaUpdateError("write");
       Update.printError(Serial);
-      Update.end();
-      sysFlags.setUpdate(false);
-      otaFail("write");
+      otaFail();
+      return;
     }
-    else
+    otaReceivedSize += upload.currentSize;
+    uint32_t progress = (static_cast<uint64_t>(otaReceivedSize) * 98) / otaExpectedSize;
+    if (progress > 98) progress = 98;
+#if DEBUG
+    if (progress >= otaTracePercent + 25U)
     {
-      otaReceivedSize += upload.currentSize;
+      otaTracePercent = static_cast<uint8_t>(progress);
+      Serial.printf("OTA flash: bytes=%u progress=%u heap=%u\n",
+                    Update.progress(), progress, ESP.getFreeHeap());
     }
-    ESP.wdtFeed();
+#endif
+    sendOtaProgress(static_cast<uint8_t>(progress));
+    // Service SDK/Wi-Fi every chunk even when no progress peer is registered.
+    yield();
   }
   else if (upload.status == UPLOAD_FILE_END)
   {
-    if (otaExpectedSize && otaReceivedSize != otaExpectedSize)
-      otaFail("size");
-    otaSucceeded = !otaRejected && sysFlags.updateNow() && Update.end(true);
-    sysFlags.setUpdate(false);
-    if (otaSucceeded)
+#if DEBUG
+    Serial.printf("OTA end: received=%u expected=%u\n", upload.totalSize, otaExpectedSize);
+#endif
+    if (!sysFlags.updateNow()) return;
+    if (otaReceivedSize == 0 || upload.totalSize != otaReceivedSize ||
+        (otaSizeProvided && otaReceivedSize != otaExpectedSize))
     {
-      DBGLN(F("OTA Success"));
+      otaErrorCode = "incomplete";
+      otaFail();
+      return;
     }
-    else
-    {
-      DBGLN(F("OTA Failed"));
-      Update.printError(Serial);
-      if (!otaRejected)
-        otaFail("verify");
-    }
+    otaUploadComplete = true;
+    sendOtaProgress(98); // validation/acceptance follows in handleOTAComplete
   }
   else if (upload.status == UPLOAD_FILE_ABORTED)
   {
+    otaErrorCode = "aborted";
     DBGLN(F("OTA Aborted"));
-    if (sysFlags.updateNow())
-      Update.end();
-    sysFlags.setUpdate(false);
     otaSucceeded = false;
-    otaSuccessPendingRestart = false;
-    otaSuccessFrameReady = false;
-    dispState.setStopCards(false);
-    dispState.setFirstShow(true);
-    dmd.resume();
-    applySettings();
-    dmd.clear();
-    markDisplayDirty();
+    otaFileSeen = false;
+    otaFail();
   }
 }
 
@@ -2480,39 +2428,22 @@ void initServer()
   server.onNotFound(handleNotFound);
   server.on("/", HTTP_GET, handleRoot);
   server.on("/checkUpdate", HTTP_GET, handleCheckUpdate);
-  server.on("/testMode", HTTP_GET, handleTestMode);
-  server.on("/getData", HTTP_GET, handleGetData);
-  server.on("/getCardSettings", HTTP_GET, handleGetCardSettings);
-  server.on("/setDateTime", HTTP_GET, handleSetDateTime);
-  server.on("/setEqama", HTTP_GET, handleSetEqama);
-  server.on("/setLocation", HTTP_GET, handleSetLocation);
-  server.on("/setSettings", HTTP_GET, handleSetSettings);
-  server.on("/setCardSettings", HTTP_GET, handleSetCardSettings);
-  server.on("/setMessage", HTTP_GET, handleSetMessage);
-  server.on("/setFont", HTTP_GET, handleSetFont);
-  server.on("/getDisplaySettings", HTTP_GET, []() {
-    char body[32];
-    snprintf(body, sizeof(body), "Display,1,%u,%u", config.fontFamily,
-             config.digitStyle);
-    server.send(200, "text/plain", body);
-  });
-  server.on("/getTimeFormat", HTTP_GET, []() {
-    server.send(200,"text/plain",config.hour24 ? "TimeFormat,1,1" : "TimeFormat,1,0");
-  });
-  server.on("/v2/getData", HTTP_POST, handleV2GetData);
-  server.on("/v2/setDateTime", HTTP_POST, handleV2SetDateTime);
-  server.on("/v2/setEqama", HTTP_POST, handleV2SetEqama);
-  server.on("/v2/setLocation", HTTP_POST, handleV2SetLocation);
-  server.on("/v2/setSettings", HTTP_POST, handleV2SetSettings);
-  server.on("/v2/setMessage", HTTP_POST, handleV2SetMessage);
-  server.on("/v2/getCardSettings", HTTP_POST, handleV2GetCardSettings);
-  server.on("/v2/setCardSettings", HTTP_POST, handleV2SetCardSettings);
-  server.on("/v2/setNetwork", HTTP_POST, handleV2SetNetwork);
-  server.on("/v2/setFont", HTTP_POST, handleV2SetFont);
-  server.on("/v2/testMode", HTTP_POST, handleV2TestMode);
-  server.on("/v2/health", HTTP_POST, handleV2Health);
-  server.on("/v2/selfTest", HTTP_POST, handleV2SelfTest);
-  server.on("/v2/update", HTTP_POST, handleOTAComplete, handleOTAUpload);
+  server.on("/getData", HTTP_POST, handleV2GetData);
+  server.on("/setDateTime", HTTP_POST, handleV2SetDateTime);
+  server.on("/setEqama", HTTP_POST, handleV2SetEqama);
+  server.on("/setLocation", HTTP_POST, handleV2SetLocation);
+  server.on("/setSettings", HTTP_POST, handleV2SetSettings);
+  server.on("/setMessage", HTTP_POST, handleV2SetMessage);
+  server.on("/setDisplay", HTTP_POST, handleV2SetDisplay);
+  server.on("/getCardSettings", HTTP_POST, handleV2GetCardSettings);
+  server.on("/setCardSettings", HTTP_POST, handleV2SetCardSettings);
+  server.on("/setNetwork", HTTP_POST, handleV2SetNetwork);
+  server.on("/setPassword", HTTP_POST, handleV2SetPassword);
+  server.on("/resetDefault", HTTP_POST, handleV2ResetDefault);
+  server.on("/setFont", HTTP_POST, handleV2SetFont);
+  server.on("/testMode", HTTP_POST, handleV2TestMode);
+  server.on("/health", HTTP_POST, handleV2Health);
+  server.on("/selfTest", HTTP_POST, handleV2SelfTest);
   server.on("/updateMain", HTTP_POST, handleOTAComplete, handleOTAUpload);
   server.begin();
   DBGLN(F("Web server started"));
@@ -2529,7 +2460,7 @@ void testMode()
     testStartMs = 0;
     sysFlags.setTest(false);
     dmd.setBrightness(effectiveBrightness());
-    dmd.clear();
+    clearDisplay();
     markDisplayDirty();
     return;
   }
@@ -2570,7 +2501,7 @@ void splashScreen()
   safeCopyP(title, config.language == LANG_EN ? SPLASH_TITLE_EN : SPLASH_TITLE,
             sizeof(title));
   ArabicShaper::shape(title, shapedTitle, sizeof(shapedTitle));
-  dmd.clear();
+  clearDisplay();
   dmd.setFont(BasitFont7);
   drawDisplayText((DISPLAY_PROFILE.width - displayTextWidth(shapedTitle)) >> 1,
                   0, shapedTitle);
@@ -2584,39 +2515,6 @@ void splashScreen()
 void adjustTime()
 {
   DBGLN(F("adjustTime"));
-  // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-  // azan zohr
-  // rtc.adjust(DateTime(2022, 2, 11, 12, 4, 48));  // Befor azan
-  // rtc.adjust(DateTime(2022, 2, 11, 12, 5, 58));  // azan waiting
-  // rtc.adjust(DateTime(2022, 2, 11, 12, 7, 38));  // azan waiting 2
-  // rtc.adjust(DateTime(2022, 2, 11, 12, 7, 55));  // azan last Minute
-  // rtc.adjust(DateTime(2022, 2, 11, 12, 8, 55));  // azan zohr
-  // rtc.adjust(DateTime(2022, 2, 11, 12, 19, 55)); // eqama waiting
-  // rtc.adjust(DateTime(2022, 2, 11, 12, 20, 55)); // eqama last minute
-  // rtc.adjust(DateTime(2022, 2, 11, 12, 27, 30)); // Sleep last 2minute
-  // rtc.adjust(DateTime(2022, 2, 11, 12, 27, 55)); // Sleep last minute
-  // rtc.adjust(DateTime(2022, 2, 11, 12, 28, 55)); // Azkar
-  // rtc.adjust(DateTime(2022, 2, 11, 12, 40, 40)); // Gomaa Finish
-  // azan Esha 18:52
-  // rtc.adjust(DateTime(2022, 2, 1, 18, 48, 45)); // Befor azan
-  // rtc.adjust(DateTime(2022, 2, 1, 18, 49, 55)); // azan waiting Start
-  // rtc.adjust(DateTime(2022, 2, 1, 18, 50, 55)); // azan waiting
-  // rtc.adjust(DateTime(2022, 2, 1, 18, 50, 55)); // azan waiting End
-  // rtc.adjust(DateTime(2022, 2, 1, 18, 51, 55)); // azan Esha Start
-  // rtc.adjust(DateTime(2022, 2, 1, 18, 53, 55)); // azan Esha End
-  // rtc.adjust(DateTime(2022, 2, 1, 18, 59, 55)); // eqama Start
-  // rtc.adjust(DateTime(2022, 2, 1, 19, 0, 55));  // eqama last minute Start
-  // rtc.adjust(DateTime(2022, 2, 1, 19, 1, 45));  // eqama last minute End
-  // rtc.adjust(DateTime(2022, 2, 1, 19, 1, 55));  // eqama
-  // rtc.adjust(DateTime(2022, 2, 1, 19, 2, 55));  // Sleep Start
-  // rtc.adjust(DateTime(2022, 2, 1, 19, 9, 55));  // Sleep End
-  // rtc.adjust(DateTime(2022, 2, 1, 19, 9, 55));  // Azkar Start
-  // rtc.adjust(DateTime(2022, 2, 1, 19,10, 55));  // Azkar End
-  // full Time
-  // rtc.adjust(DateTime(2022, 2, 1, 12, 57, 55)); // full Time
-  // Never leave an active rtc.adjust() in diagnostic builds. Uncomment one
-  // test case locally only for a controlled prayer-window test, then restore it.
-  // rtc.adjust(DateTime(2022, 2, 1, 23, 59, 50)); // Midnight
 }
 #else
 #define adjustTime()
@@ -2625,7 +2523,7 @@ void adjustTime()
 void setup()
 {
   if (DEBUG)
-    Serial.begin(115200);
+    Serial.begin(74880);
 
   DBGLN(F("\n\n=== Basit Masjed Clock Starting ==="));
   DBG(F("Reset: "));
@@ -2637,13 +2535,25 @@ void setup()
   bootResetInfo.replace('\n', ' ');
   safeCopy(resetInfo, bootResetInfo.c_str(), sizeof(resetInfo));
 
-  EEPROM.begin(512);
+  configStoreReady = LittleFS.begin();
+  if (!configStoreReady)
+  {
+    // New OTA units may have an unused LittleFS partition; initialize it once.
+    DBGLN(F("LittleFS mount failed; formatting"));
+    if (LittleFS.format())
+      configStoreReady = LittleFS.begin();
+  }
   if (!loadConfig())
   {
     DBGLN(F("No config, using defaults"));
-    resetConfig();
+    if (!resetConfig())
+    {
+      config.setDefaults(); // Keep AP usable even if initial Flash save fails.
+      DBGLN(F("Default save failed; defaults are RAM-only"));
+    }
   }
   loadPrayerPrefs();
+  loadPowerPrefs();
   loadCardPrefs();
   dispState.cardNum = CardScheduler::firstIndex(cardOrder, cardEnabledMask) + 1;
   pinMode(FACTORY_RESET_PIN, INPUT_PULLUP);
@@ -2659,7 +2569,7 @@ void setup()
   // Render into a back buffer and present only completed frames. This avoids
   // visible clear-then-draw tearing while Arabic text is being redrawn.
   dmd.setDoubleBuffer(true);
-  dmd.clear();
+  clearDisplay();
   markDisplayDirty();
 
   splashScreen();
@@ -2667,7 +2577,7 @@ void setup()
 
   if (startRTC(true))
   {
-    DBGLN(F("RTC OK"));
+    DBGLN(sysFlags.rtcTimeValid() ? F("RTC OK") : F("RTC connected; time invalid"));
     adjustTime();
     syncRTC();
   }
@@ -2688,13 +2598,14 @@ void loop()
 {
   const uint32_t loopStartedUs = micros();
   dmd.loop();
-  const unsigned long now = millis();
+  unsigned long now = millis();
   serviceRTC(now);
   updateRtcBootIndicator(now);
   serviceWiFi(now);
   serviceFactoryReset(now);
   yield();
   server.handleClient();
+  now = millis(); // A request may have reset the RTC/software tick deadline.
 
   // Re-apply auto brightness when crossing into/out of night.
   static unsigned long lastBrightMs = 0;
@@ -2702,14 +2613,6 @@ void loop()
     lastBrightMs = now;
     dmd.setBrightness(effectiveBrightness());
   }
-
-  // static bool wifiOff = false;
-  // if (!wifiOff && now >= MS_WIFI_TIMEOUT) {
-  //   WiFi.mode(WIFI_OFF);
-  //   WiFi.forceSleepBegin();
-  //   wifiOff = true;
-  //   DBGLN(F("WiFi OFF"));
-  // }
 
   if (sysFlags.restartNow() &&
       static_cast<int32_t>(now - sysFlags.restartAt) >= 0)
@@ -2738,7 +2641,7 @@ void loop()
     {
       sysFlags.setSplash(false);
       syncRTC();
-      dmd.clear();
+      clearDisplay();
       markDisplayDirty();
     }
     presentDisplayFrame();
@@ -2756,35 +2659,52 @@ void loop()
 
   // Second tick - update time and prayer window
   static int16_t cachedNowMins = -1;
+  const int16_t oldYear = timeData.year;
+  const int8_t oldMonth = timeData.month, oldDay = timeData.day, oldHour = timeData.hour;
+  const bool longStall = now - lastSecondMs >= 60000UL;
   const uint8_t secondTicks = consumeSecondTicks(now, lastSecondMs);
   if (secondTicks)
   {
     for (uint8_t tick = 0; tick < secondTicks; ++tick)
       tickSecond();
-    cachedNowMins = timeData.hour * 60 + timeData.min;
-
-    // Update prayer window once per minute
-    if (timeData.sec == 0)
-      updatePrayerWindow(cachedNowMins);
-
-    if (!sysFlags.rtcOk() || timeData.year < MIN_VALID_YEAR)
+    // A fresh RTC sample is taken once, after all due software ticks.
+    if (sysFlags.rtcOk() &&
+        (now - lastRtcSyncMs >= MS_RTC_SYNC ||
+                             oldHour != timeData.hour || longStall))
+      syncRTC();
+    const bool dateChanged = !sameCalendarDate(timeData.year, timeData.month,
+                                               timeData.day, oldYear, oldMonth, oldDay);
+    if (dateChanged)
     {
-      dispState.setStopCards(true);
-      smartText.setArea(0, DISPLAY_PROFILE.height);
-      safeCopyP(dispState.runText,
-                config.language == LANG_EN ? RTC_FAIL_TEXT_EN : RTC_FAIL_TEXT,
-                sizeof(dispState.runText));
-      smartText.drawFlash(dispState.runText, dispParams.yPos, now);
-      if (smartText.consumeDirty())
-        markDisplayDirty();
+      calcHijri();
+      calcPrayers();
     }
-    else
-    {
-      checkPrayers(now, cachedNowMins);
-    }
+    const int16_t nowMins = timeData.hour * 60 + timeData.min;
+    if (cachedNowMins != nowMins || dateChanged)
+      updatePrayerWindow(nowMins);
+    cachedNowMins = nowMins;
   }
 
-  if (!dispState.stopCards())
+  if (!sysFlags.rtcOk() || !sysFlags.rtcTimeValid())
+  {
+    dispState.setStopCards(true);
+    smartText.setArea(0, DISPLAY_PROFILE.height);
+    const char *rtcError = !sysFlags.rtcOk()
+                               ? RTC_DISCONNECTED_TEXT
+                               : (config.language == LANG_EN
+                                      ? RTC_TIME_INVALID_TEXT_EN
+                                      : RTC_TIME_INVALID_TEXT_AR);
+    safeCopyP(dispState.runText,
+              rtcError,
+              sizeof(dispState.runText));
+    smartText.drawFlash(dispState.runText, dispParams.yPos, now);
+    if (smartText.consumeDirty())
+      markDisplayDirty();
+  }
+  else if (!ultraPowerSaveActive())
+    checkPrayers(now, timeData.hour * 60 + timeData.min);
+
+  if (!updateUltraPowerSaveDisplay() && !dispState.stopCards())
     handleCards();
   presentDisplayFrame();
   recordLoopTelemetry(loopStartedUs, now);
