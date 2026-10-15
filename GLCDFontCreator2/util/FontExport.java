@@ -152,6 +152,8 @@ public class FontExport {
 								data >>= 1;
 								data |= p<<7;
 							}
+							// Single-byte GLCD fonts start at bit0; keep multi-page tail packing.
+							if(h < 8) data >>= 8-h;
 							fontData += hexStr(data, 0)+", ";
 							data = 0;
 						}
