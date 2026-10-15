@@ -30,6 +30,7 @@ public class BuildArabicFont {
         if (cp == 0x20) return "SPACE";
         if (cp >= 0x21 && cp <= 0x7E) return "ASCII '" + (char) cp + "'";
         if (cp == 0x7F) return "DEL";
+        if (cp == 0x9C || cp == 0x9D) return "ة محجوز — لا يستخدمه التشكيل";
         String[] x = {"ء","آ","أ","إ","ا","د","ذ","ر","ز","و","ى","ؤ",
             "ب","ة","ت","ث","ج","ح","خ","س","ش","ص","ض","ط","ظ","ع","غ",
             "ف","ق","ك","ل","م","ن","ه","ي","ئ"};
