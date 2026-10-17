@@ -859,3 +859,363 @@ validation is reused for M73 selfTest. Five-second restart grace is shared and
 M73 handles millis rollover. Its current synchronous OTA callback yields after
 accepted writes, not merely feeding WDT; this is not proof of a hardware reset fix.
 M71 is explicitly deferred to its own plan and must never receive an M73 image.
+
+### 2026-10-11 — Safe storage boot and shared iqama limits
+
+Owner approved the seven-segment audit fixes and explicitly limited iqama to
+0–99 minutes across both clock families. Zero keeps its disabled-iqama meaning.
+Old valid100–120-minute records normalize to99 only on load; all other fields
+and storage layouts/versions remain unchanged. P10 checks the original CRC
+before normalization, and neither clock performs a migration write on boot.
+The shared prayer phase gives 1/2-minute iqamas precedence over the two-minute
+azan window, without changing the approved prayer-time calculation formula.
+
+LittleFS auto-format is disabled on both families. A failed mount formats only
+a partition verified fully erased (FF); a failed read of an existing config
+does not replace it with defaults. RAM defaults keep the AP usable but are not
+treated as committed settings: E3/getData storage error and no prayer display.
+P10 validates the whole staged record, including sidecars/cards, before writing.
+This favors retaining recoverable customer data over silently hiding corruption;
+a damaged, non-erased filesystem requires deliberate recovery, not boot erasure.
+
+M73s retains TX-only JQ6500 wiring. Its existing packet protocol is sent without
+an impossible RX response wait, preserving100ms command spacing and500ms reset
+settling. No vendor library was edited. Physical audio/RTC/OTA/soak verification
+is pending; all builds were local with asset publication disabled.
+
+### 2026-10-11 — Deep-review OTA and M73 storage corrections
+
+Freeze OTA callbacks after an accepted image schedules restart; no second upload
+may alter the pending eboot image. Both pinned build-local parser overlays check
+plain argument allocations at their callers and preserve the previous upload
+object on second-file OOM so abort cleanup can release application request state.
+
+M73 storage format2 adds magic/version/payload-size/CRC32 while retaining the raw
+Configuration layout and existing XOR payload encoding. Check CRC before
+decryption/migration. Read supported legacy layouts without boot writes/reset;
+upgrade on the next explicit save, verifying the temporary file before rename
+and RAM commit. Older firmware cannot read the new format: downgrades require
+deliberate conversion/a compatible reader. This was approved by the owner.
+CRC is accidental-corruption detection, not authentication or copy protection.
+
+Treat failed/short AP password reads as unavailable, never a truncated/default
+password. Numeric fallback and first-boot defaults require confirmed NOENT, not
+FS::exists false (which also hides I/O errors). A local LittleFS lookup accessor
+is specific to the pinned ESP8266 Core3.1.2 implementation; revisit it on SDK
+changes. Failed reset compensation stops active config and keeps ECO coherent;
+successful recovery refreshes time/prayer caches before acknowledgement.
+
+No new journal, dependency, release version, Android asset publication or upload.
+Power-loss cross-file atomicity and physical RTC/OTA/soak remain unverified.
+
+### 2026-10-12 — Owner-authorized DP5125D latch timing experiment
+
+The connected P10 panels use DP5125D. Chip identity alone does not establish
+panel scan ratio; keep the working four-phase row mapping, 10MHz SPI, 1ms scan
+schedule and configured brightness. The experimental `p10_4x1_dp5125d` build
+set `DMDESP_DP5125D_TIMING=1`; all existing profiles retained original timing.
+The final trial's vendored-driver change was isolated to the scan handoff: force
+OE high instead of floating it, select the row, pulse LAT after all SPI data
+with 1us settling intervals, then restore PWM. No current/gain registers or
+FM6126A initialization are sent; SPI data transfer stays unchanged.
+
+Reference: https://github.com/ironsheep/P2-HUB75-LED-Matrix-Driver/blob/main/HUB75-Driver-SWver1.md
+documents DP5125D LAT_POSN_OVERLAP/LAT_STYLE_OFFSET without INIT_PANEL_REQUIRED.
+This is a reference-derived experiment, not a manufacturer-datasheet guarantee
+or a proved flicker fix. A real-function host check compares all framebuffer
+bits against the original path for 1-4 panels, both orientations and all phases;
+it checks no clocks under LAT, blanking and retained SPI modes. Electrical timing
+and shimmer need owner observation. Baseline BIN SHA256:
+`9F46E6DF2F4BCA0071BB7E87754DABF16E8F5623C05CD6A3C2F0D64D75FE9230`.
+Rollback uses the saved original BIN or builds/uploads `p10_4x1`.
+
+The first OFFSET candidate was uploaded with flash hash verified. Owner observed
+no shimmer but dim random pixels around letters. Serial captured a Hardware
+Watchdog reset after `loopMax=9760us`; causation is undetermined. The second
+candidate keeps the same LAT overlap but extends blanking past LAT falling to
+test whether transitional exposure causes ghosting. Treat both visual quality
+and restart stability as pending; never infer either from a successful build.
+
+Owner confirmed second candidate still has dim stray pixels but steady glyphs.
+No reset was observed in its 65s serial capture (`loopMax=9798us`), which is
+not a soak test. Third candidate removes LAT overlap and final-byte GPIO
+transfer completely, retaining explicit OE blanking to isolate these effects.
+The RGB-panel reference above does not guarantee overlap suits this monochrome
+panel. The original row order, SPI bytes and speed remain exact.
+
+Closed/rejected: owner reports the third candidate reduced stray pixels greatly
+but did not eliminate them, and original glyphs shimmer again. Restore exactly
+the saved pre-experiment driver and BIN; retain the already-approved splash,
+RTC startup and DEBUG Wi-Fi changes. Remove temporary build flag/profile/test
+from the repo (test archived with the baseline outside the repo). Do not add a
+fourth guessed timing patch: loopMax is not a scan/OE waveform measurement.
+The next investigation needs actual scan/OE timing and reset evidence.
+
+### 2026-10-12 — Scan scheduler measurements after rejected timing trials
+
+Owner requested continuation. `p10_4x1_scan_diag` enables DEBUG and a build-only
+`DMDESP_SCAN_DIAGNOSTICS` flag. Necessary vendor hooks timestamp refresh start
+and the software point immediately before LAT, then report durations outside
+the refresh path. Original SPI, GPIO, OE, PWM and scan schedule remain intact;
+normal/release builds omit all hooks and counters. Reset the previous LAT sample
+on pause/resume to exclude intentional OTA blanking. Ten-second summaries show
+scan gap minimum/mean/maximum, gaps over5ms, max scan duration and separate maxima
+for services (including RTC), yield, HTTP and rendering. Serial summary time is
+excluded from the next measured gap; logging itself may cause a brief twitch.
+
+LoopMax alone cannot prove scan starvation because SmartText refreshes from
+inside rendering. These software timestamps quantify scheduling and transfer
+duration, not electrical OE/PWM waveforms or signal-level integrity. Host check
+executes real stats/refresh source and confirms identical GPIO/SPI ordering
+with instrumentation on/off, all orientations/phases for1-4 panels, rollover
+and intentional-pause exclusion. No speculative fourth timing patch.
+
+Correct DEBUG command A to call server.begin after initAP: W had stopped the
+HTTP server, so restoring only AP left phone API unavailable. Existing normal
+DEBUG builds receive this one-line command correction; display timing is still
+unchanged. Before that correction the normal BIN was byte-identical to baseline.
+
+The connected-phone comparison measured LAT gaps33.5-43.6ms against HTTP
+24.98-39.22ms, with15 intervals over5ms in40s. Stable Wi-Fi OFF gaps3.459-4.211ms
+had no over5ms intervals. Idle AP without peers was comparable to OFF; Wi-Fi
+radio enabled by itself was not proved the cause. SDK WiFiClient::flush calls
+wait_until_acked, blocking the foreground until TCP acknowledgement. Remove
+the explicit flush after server.send in sendV2: the normal server owns response
+finalization/connection lifecycle and queues copied bytes; five-second restart
+grace remains. Preserve body/status/content type and commit-before-success.
+This is a measured-network-path candidate, not an additional LED timing guess.
+Real-source reply test first fails on a40ms remote-ACK stand-in, then passes
+for success/error responses. Physical before/after and residual jitter pending.
+
+Reply fix preserved successful phone changes but did not improve shimmer by
+owner observation. Measured HTTP/scan gaps remain long. Old P170 code's
+dmdInit is actually called from setup and attaches a timer0 refresh ISR;
+current DMDESP relies on foreground loop. Returning HTTP earlier cannot
+provide independent scanning during all remaining blocking operations.
+
+An isolated SDK timer experiment is warranted by this evidence. Use an embedded
+SDK os_timer per DMDESP instance at1ms, not timer0. Remove per-scan analogWrite
+only in this profile: Core3.1.2 startWaveform waits with esp_yield, which must not
+be called from SDK timer context. Apply PWM in foreground startup/setBrightness/
+resume; keep cached brightness during pause and disarm on pause/destruction.
+Keep original SPI and row/LAT/OE pinMode sequence. Background callback only
+transfers front-buffer data and records counters; no network/Serial/heap work.
+This changes PWM maintenance and scheduling, not gain registers or scan ratio.
+OS software timer latency and visual quality require hardware tests; retained
+baseline profile is the rollback. No timer0, Timer1 takeover or default change.
+
+Closed/rejected after physical feedback: SDK timer did not reduce visible
+shimmer; no stray pixels and phone connection/settings remained functional.
+Software gaps still reached14.926ms during setDateTime and6.176ms during
+getData in a100s capture. No restart observed in that interval is not soak
+proof. Stop timing trials following the owner's time concern. Restore the
+quiet foreground-scanning release, keeping splash/RTC and the reply-flush fix.
+COM5 upload at115200 completed with flash hash verified;427424B BIN SHA256
+`2748ADACB71162D759DBEFF7E344ADCB403D71DAA37A2F886746ED8EAB3B47D8`.
+
+The SDK profile is retained solely as isolated rejected-experiment evidence,
+not enabled in release builds. No default scheduler/PWM change is approved.
+Visible shimmer is unresolved; electrical signal timing and long-run stability
+have not been verified. Do not infer a specific hardware fault from this trial.
+
+### 2026-10-12 — Inspect regional clearing before another display change
+
+Owner proposes full-screen clear/repaint as the cause of shimmer on stationary
+text alongside scrolling text. Source already isolates top clock/info zones and
+the lower SmartText region. Unchanged static text is not redrawn. Bitmap clear
+and drawing target fb; refresh reads displayfb, with double buffering requested
+in setup and presentation after drawing. A real-source host check with stand-in
+glyph pixels preserves top rows during scroll/change/empty/flash in both
+directions across1-4 panels; buffer handoff does not reveal incomplete drawing.
+Do not add redundant dirty-region infrastructure or flash a purported fix for
+a behavior already present. Actual allocation failure can fall back to single
+buffering and has not been checked on the connected board in this review.
+Rendering work may still alter scan/PWM timing; this is distinct from pixel
+clearing, and remains unproved. No production changes or additional hardware
+experiment in this review.
+
+### 2026-10-12 — Isolated packed-pixel scrolling probe
+
+Owner approved a separate probe to reduce repeated glyph rasterization, not
+another scanner/PWM change. `p10_4x1_pixel_scroll` enables
+`SMARTTEXT_PIXEL_SCROLL=1` with DEBUG0, normal foreground scanning and no scan
+logging. SmartText shifts inverted packed bytes only in its existing full-width
+text area and rasterizes the entering column from the unchanged GLCD font.
+No vendor library edits, extra framebuffer, storage change or API change.
+Non-byte-aligned/sub-width/out-of-bounds areas fall back to the original path;
+normal profiles omit the probe completely. Startup/static/flash rendering and
+scroll cadence/direction/done semantics remain original.
+
+Real-source host comparison first failed on repeated drawChar calls, then
+passed103168 byte-identical frame/done samples for all eight Basit/Tahoma fonts,
+1-4 panels and Arabic/English. Full-glyph calls in that fixture drop from4303315
+to2304 (startup/static/flash); this is not a measured board speed improvement.
+Other existing host checks pass. Physical image/API/shimmer feedback remains
+the acceptance gate. Saved original427424B release BIN and SmartText files in
+the task's external `p10-pixel-scroll-baseline-20261012` directory, SHA256
+`2748ADACB71162D759DBEFF7E344ADCB403D71DAA37A2F886746ED8EAB3B47D8`.
+
+Probe and normal release builds succeeded; normal release still reproduces
+the saved original SHA256 above. Probe428320B SHA256
+`B553867E78EC43AEB33EDA9B341D7A850348E04C961618DAE4815306B7D3D7D6`
+uploaded at115200 on COM5 to MAC24:4c:ab:4f:ed:96 with flash hash verified.
+RTS reset requested afterward. Owner image/shimmer/API feedback is pending;
+no Android assets/version publication or settings writes. A read-only health
+POST after upload timed out on the PC in3s; neither API success nor a firmware
+API fault is proved by that unreachable request. Upload success is not proof
+that shimmer is cured.
+
+Owner subsequently reports very substantial shimmer reduction, intact letters,
+and successful phone connection/settings changes. Accept packed-pixel scrolling
+as the P10 default via guarded `SMARTTEXT_PIXEL_SCROLL=1` in constants. Explicit
+override0 preserves the original renderer and the original saved BIN remains
+available. Remove the redundant temporary build profile, keeping real-font
+tests for default/explicit-on/explicit-off behavior. No additional hardware
+upload, Android asset publication, version bump or Git publication is needed
+for this default promotion. Physical evidence is limited to this4x1 board and
+short owner tests; no claim that residual shimmer/resets/long-run faults are
+eliminated or that electrical signal integrity was verified.
+
+Default/on/off comparison, legacy region, prayer wording and startup checks
+pass after promotion. Standard4x1 release builds successfully and its BIN SHA256
+is byte-identical to the uploaded/owner-tested probe (`B553867E…` above), so no
+additional hardware flash was performed.
+
+### 2026-10-12 — Cache the active incoming-column glyph
+
+Owner approved this further rendering optimization and will assess it on the
+real display. Retain only one cached text span (including its spacing) and
+glyph address/width/height/pages, rather than a whole glyph table or extra
+framebuffer. Reuse it while incoming columns belong to that span; resolve from
+text/font only on a miss. Font-pointer changes invalidate the lookup; reset
+and text changes invalidate the cached text pointer. Existing direction and
+shaping setters already reset. The rasterization, scan cadence and scroll
+deadline/done behavior remain unchanged. No library/storage/API edits.
+
+The adjacent-column regression first failed for repeated charWidth calls,
+then passed.123648 real-font frame/done samples agree across default/on/off
+paths, including text/font/direction/reset/shaping changes; all existing host
+scripts pass.4x1 release build succeeds, adding24B static RAM and128B flash.
+BIN428448B SHA256 `C9B25E2A0D357BB1C6BD127CA3CD9EF87400C9BCBA56F48DBD9B58861DD193C2`.
+Saved prior owner-tested source/BIN externally for rollback. This is reduced
+lookup work, not a measured board-speed gain or a guarantee of zero shimmer.
+Physical feedback and long-run/reset validation remain pending.
+
+Candidate uploaded on COM5 at115200 to the same ESP8266 MAC24:4c:ab:4f:ed:96,
+with flash hash verified and RTS restart requested. No Android assets, firmware
+version, Git publication or time/settings writes. Await owner confirmation of
+remaining shimmer, intact text and successful phone changes on this candidate.
+
+Owner reports further strong reduction, intact letters and working phone
+settings; residual slight twitch is concentrated at scrolling/static text entry.
+Cache is visually accepted. Trace first-frame work separately: shape/measure/
+regional clearing still occurs, and initial scrolling repeats clearArea and
+visits offscreen glyphs. This supports an initial-render-work hypothesis, not
+a measured electrical cause. No additional firmware edits or upload for this
+feedback review; initial-frame and long-run/reset validation remain pending.
+
+### 2026-10-12 — Reduce first-frame work without changing rendered pixels
+
+Owner approved packed regional clear and removal of redundant entry work.
+Under the adopted pixel-rendering path, clear valid full-width byte-aligned
+regions with0xFF packed bytes, retaining Bitmap clipping for partial/invalid
+regions. updateText still shapes/measures and clears once; first scrolling draw
+does not clear again. drawTextFast still measures each character for placement,
+but skips drawChar's bitmap offset/pixel work for wholly hidden left glyphs
+(including invalid/zero-width handling). Existing yield/scan cadence calls and
+scroll deadlines remain; no library, RTC, storage, prayer or API edits.
+
+Entry test first failed for pixel-rectangle clearing, then passed; fallback
+first-frame clear count is one.124368 real-font frame/done samples agree across
+default/on/off and geometric edge cases; all other existing host checks pass.
+4x1 release builds with unchanged37436B RAM, +80B flash;428528B BIN SHA256
+`F3D0A4677CC9AA48AC96FAD400B5C571B7435121B2F04D7A8B71EF074C5C9A83`.
+Prior owner-tested source/BIN saved externally for rollback. Owner physical
+feedback and long-run/reset verification remain pending; reduced work is not
+a quantified hardware latency gain or a guarantee of zero entry twitch.
+
+Uploaded428528B on COM5 at115200 to MAC24:4c:ab:4f:ed:96 with flash hash
+verified and RTS reset requested. No time/settings, version, Android or Git
+publication changes. Await owner feedback specifically at static/scroll entry.
+
+Owner now confirms the entry twitch disappeared, letters are intact and the
+phone app/settings remain functional. Accept the current display implementation
+on this4x1 board (BIN SHA256 `F3D0A467…` above). Stop display timing experiments
+here; no source/firmware/upload/publication change is needed for this feedback.
+Long-run/intermittent-reset proof and physical validation of other panel sizes
+remain pending; this visual acceptance is not a whole-firmware release claim.
+
+### 2026-10-12 — Observe the exact owner-tested release for12 hours
+
+User authorized long-run and intermittent-reset testing, connected the PC to
+clock Wi-Fi and agreed to leave it/USB powered. Do not substitute DEBUG firmware:
+retain release428528B SHA256 `F3D0A467…`. Added host collector only. Passive COM5
+74880 with DTR/RTS false before open; it never writes serial commands, time or
+settings. `/health` every30s and `/selfTest` every5min provide live-response,
+uptime/heap/RTC evidence. Windows thread-local system-sleep inhibition is held
+only during the run; the screen may sleep. Record connection/observation gaps
+and possible millis rollover rather than treating them as successful coverage.
+ROM boot markers and uptime drops may describe one reboot and must not be summed.
+Port-open-window evidence is annotated; avoid declaring it spontaneous without
+comparison. Baseline External System reason alone is not a new reboot event.
+
+Five local checks pass including two complete simulated collector runs (normal
+and ROM boot); build succeeds and firmware hash remains exact. Physical run
+starts02:34:20.535294 UTC, ends14:34:20.535294 UTC (05:34–17:34 Cairo), actual
+interpreter PID34304 (launcher23256). Logs:
+`C:/Users/m_nag/.codex/visualizations/2026/10/10/01a12388-fa61-7732-b647-7a5067e1e950/p10-soak-20261012-022046Z/`.
+Read status.json, events.jsonl, serial.raw and runner.err.txt; do not open COM5
+again while the collector runs. Heartbeat automation `p10-12` follows this thread
+every30min, stays quiet for unchanged healthy state, notifies meaningful new
+evidence/failure and reports completion, then disables itself. First123s healthy
+with5 successful health samples, no reset/drop/coverage error, heap minimum36392B
+and max fragmentation4%; this is not a finished12-hour result. No power cycling,
+OTA/write stress, other-size physical validation, assets/version/Git publication.
+
+## 2026-10-15 — Preserve readable alerts on narrow panels
+
+An alert must fit its measured shaped width before it can blink in place.
+Longer alerts use SmartText's existing continuous pixel scroll, because
+blinking while entering/exiting would hide glyphs. This applies to the actual
+font width on every profile, including English alerts with the small font;
+no glyph changes, automatic font shrinking or separate firmware project is
+needed. Fitting alerts keep the existing blink cadence.
+
+Paired large-font prayer messages now advance after a full scrolling pass,
+or five visible seconds for fitting text, rather than an uptime-aligned
+five-second boundary. A display revision restarts the pair at message one.
+The prayer state machine still chooses the current phase on every loop and
+can supersede either message immediately; the rendering engine never delays
+an adhan/iqama phase boundary to finish an old message.
+
+## 2026-10-16 — Bound and align the small-font top row
+
+Keep owner font pixels intact. Determine the font's globally blank leading
+rows once per font and offset only top-row drawing. Do not apply a blind
+negative y offset to a font already beginning at bit0, or move the lower row.
+
+Clock and info draw into a shared once-allocated8-row Bitmap. Copy only the
+owning horizontal zone into the existing back buffer, so glyph foreground
+and background pixels cannot cross into the adjacent zone. Right-align
+actual ink rather than glyph advance plus a fixed4px margin. Use Bitmap.copy
+between distinct buffers for non-byte-aligned padding; the vendored in-place
+Bitmap.scroll/blit path has incorrect row translation and is not used here.
+No library or scan-driver changes are needed.
+
+Prefer readable compact text before clipping: keep clock hours/minutes,
+drop period then seconds only as needed, and compact the fixed info formats
+when their measured shaped width exceeds their zone. Lower-row SmartText
+continues using its existing coordinates, artwork and scrolling.
+
+## 2026-10-16 — Owner's final top-row margins and retained seconds
+
+Use one blank outer pixel to the left of clock ink and to the right of info
+ink. Copy the measured ink rectangle into its zone with that fixed margin;
+remove the separate packed-copy/padding branches and byte-alignment rule.
+Clock is left-aligned rather than centered.
+
+Remove the adaptive period/seconds deletion cases. On3x1/4x1 the clock owns
+the first64 pixels, so its full time fits; info owns the remainder. On1x1,
+the existing HH:MM format is unchanged because full seconds cannot fit32px.
+On3x1 only, compact info may omit the Gregorian year or Arabic weekday's
+definite article to fit its32px zone. No new configuration or font edits.

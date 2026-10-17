@@ -20,7 +20,7 @@ def main() -> None:
         parser.error("version/tag must be plain names, not paths")
     lines = [f"version={args.version}", f"tag={args.tag}"]
     for profile in PROFILES:
-        relative = Path(f".pio/build/p10_{profile}_release/updateP104_p10_{profile}_release.bin")
+        relative = Path(f".pio/build/p10_{profile}_release/updateP10{profile[0]}.bin")
         path = ROOT / relative
         if not path.is_file():
             raise SystemExit(f"missing build artifact: {relative}")

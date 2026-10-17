@@ -43,6 +43,14 @@ private:
   void drawTextFast(int x, int y, const char *str);
   void clearArea();
   void drawCentered();
+#if SMARTTEXT_PIXEL_SCROLL
+  bool shiftTextPixels();
+  void drawIncomingColumn(int16_t x);
+  const char *columnChar = nullptr;
+  const uint8_t *columnFont = nullptr, *columnGlyph = nullptr;
+  int16_t columnStart = 0, columnEnd = 0;
+  uint8_t columnWidth = 0, columnHeight = 0, columnPages = 0;
+#endif
 
   DMDESP &disp;
   int16_t width, textW, scrollX;
@@ -51,7 +59,8 @@ private:
   int8_t areaY, areaH, drawY;
   char text[BUF_TEXT];
   char srcCache[BUF_TEXT];
-  bool isNew, flashVisible, shaping, rightToLeft, dirty;
+  bool isNew, flashVisible, shaping, rightToLeft, dirty,
+      preserveScrollOnUpdate;
 };
 
 #endif

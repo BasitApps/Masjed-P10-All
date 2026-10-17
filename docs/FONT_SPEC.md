@@ -69,7 +69,7 @@ Slots assigned sequentially from 0x80 in exactly this order.
 | Letter | Base CP | Forms (ISO,INI,MED,FIN) start at |
 |--------|---------|----------------------------------|
 | ب U+0628 beh | FE8F, FE91, FE92, FE90 |
-| ة U+0629 teh marbuta | FE93, —, —, FE94 *(only ISO/FIN exist; allocate all 4 slots anyway, INI/MED duplicate FIN — keeps slot math trivial)* |
+| ة U+0629 teh marbuta | FE93, reserved, reserved, FE94 *(RIGHT-joining; four storage slots retained for compatibility)* |
 | ت U+062A teh | FE95, FE97, FE98, FE96 |
 | ث U+062B theh | FE99, FE9B, FE9C, FE9A |
 | ج U+062C jeem | FE9D, FE9F, FEA0, FE9E |
@@ -94,9 +94,10 @@ Slots assigned sequentially from 0x80 in exactly this order.
 | ئ U+0626 yeh hamza | FE89, FE8B, FE8C, FE8A |
 
 > NOTE on teh marbuta: Unicode has no initial/medial presentation forms for it
-> (it never takes them in practice because it closes words). We still allocate
-> 4 slots per the uniform scheme; INI/MED bitmaps duplicate FIN. Same trick may
-> apply to any dual letter missing a Unicode form.
+> (it only connects to the preceding letter). Its existing four storage slots
+> remain fixed: ISO=155, reserved=156/157, FIN=158. Reserved artwork is preserved
+> but never selected. FE94 maps to158, including pre-shaped input; no bitmap
+> regeneration or renumbering is needed.
 
 ### 3.4 Lam-alef ligatures (8)
 | Sequence | ISO | FIN |
@@ -118,8 +119,8 @@ Each letter has two boolean traits:
 
 | Class | joins_right | joins_left | Letters |
 |-------|-------------|------------|---------|
-| DUAL  | 1 | 1 | §3.3 list |
-| RIGHT | 1 | 0 | §3.2 list |
+| DUAL  | 1 | 1 | §3.3 list except ة |
+| RIGHT | 1 | 0 | §3.2 list plus ة |
 | NONE  | 0 | 0 | ء |
 
 Transparent (skipped entirely, do not affect joining): harakat
@@ -194,6 +195,16 @@ previews, and the OWNER visually confirms/corrects before anything ships.
 
 ## 8. Selectable font families
 
+Current Tahoma artwork: large uses `TahomaBold16`/Indic; small uses the
+optically hinted `Tahoma7`/Indic. Editable sources live in
+`GLCDFontCreator2/Fonts`, with matching generated exports in `Exports`.
+Small Arabic joins share row4; detached marks and open counters are verified
+by `test/tahoma_small_font_test.py`. ASCII/digits remain owner-approved.
+The editor's single-byte export now packs row0 into bit0 (including7px);
+multi-page packing is unchanged. `test/fontcreator_roundtrip_test.py` checks
+editable source -> real export -> runtime parity; reload the editor after a
+tool-class rebuild. Optical fit backups/scripts are recorded in ROADMAP.
+
 - Current firmware contains two font families (`fontFamily` = 0..1):
   BasitFont/Janat and Tahoma. Arial Bold was removed to keep the image and
   selector small; old EEPROM value 2 is migrated to BasitFont on boot.
@@ -206,9 +217,11 @@ previews, and the OWNER visually confirms/corrects before anything ships.
   artwork as the Tahoma family; Arabic slots (`0x80..0xFF`) remain
   Janat-derived. Digit slots are generated separately and are never replaced
   by a generic Latin overlay.
-- English letter pairs receive one runtime pixel of inter-letter spacing;
-  Arabic shaping stays zero-spacing for letters, while adjacent Arabic-number
-  digits receive one pixel so numeric strings remain readable.
+- Adjacent ASCII letter pairs and adjacent digit pairs receive one runtime
+  pixel of spacing, independent of language or scroll direction. The shared
+  `TextSpacing.h` rule is used by drawing, width measurement and scroll columns.
+  Arabic joining, letter/digit boundaries, punctuation and explicit spaces
+  receive no extra gap. Indic fonts reuse the same ASCII digit slots.
 - API: `/setFont?font=0..1&lang=0..1&digits=0..1`; font, language, and digit
   choices are stored in EEPROM and applied without reboot. Arabic remains the
   default; English is available for the translated fixed strings and cards.

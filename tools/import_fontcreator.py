@@ -18,8 +18,8 @@ SPECS = (
     ("BasitFont16Indic.h", 16),
     ("Tahoma7.h", 7),
     ("Tahoma7Indic.h", 7),
-    ("Tahoma16.h", 16),
-    ("Tahoma16Indic.h", 16),
+    ("TahomaBold16.h", 16),
+    ("TahomaBold16Indic.h", 16),
 )
 
 

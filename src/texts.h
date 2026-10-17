@@ -45,20 +45,31 @@ static const char ZEKR_ALLAH[] PROGMEM =
     "لا تنس ذكر الله - سبحان الله وبحمده سبحان الله العظيم";
 static const char ZEKR_MOHAMED[] PROGMEM =
     "لا تنس الصلاة على النبي - اللهم صل على سيدنا محمد وعلى آله وصحبه وسلم";
-static const char AZKAR_AFTER[] PROGMEM = "لاتنس السنن";
-static const char AZKAR_AFTER2[] PROGMEM = "أذكار الصلاة";
+static const char AZKAR_AFTER[] PROGMEM = "لا تنس السنن";
+static const char AZKAR_AFTER2[] PROGMEM = "واذكار الصلاة";
+static const char AZKAR_AFTER_SMALL[] PROGMEM = "لا تنس السنن واذكار الصلاة";
 static const char ZEKR_ALLAH_EN[] PROGMEM =
     "Remember Allah - Glory and praise be to Allah, the Almighty";
 static const char ZEKR_MOHAMED_EN[] PROGMEM =
     "Send blessings upon the Prophet - O Allah, bless our master Muhammad and his family and companions";
 static const char AZKAR_AFTER_EN[] PROGMEM = "Do not forget the Sunnah prayers";
 static const char AZKAR_AFTER2_EN[] PROGMEM = "Prayer supplications";
+static const char AZKAR_AFTER_SMALL_EN[] PROGMEM =
+    "Do not forget the Sunnah prayers and establish prayer";
 
 // ---- Splash / system ----
 static const char SPLASH_TITLE[] PROGMEM = "بسيط للبرمجيات";
 static const char RTC_DISCONNECTED_TEXT[] PROGMEM = "RTC E1";
+static const char RTC_DISCONNECTED_SHORT[] PROGMEM = "E1";
 static const char RTC_TIME_INVALID_TEXT_AR[] PROGMEM = "اضبط الوقت";
 static const char RTC_TIME_INVALID_TEXT_EN[] PROGMEM = "TIME E2";
+static const char RTC_TIME_INVALID_SHORT_AR_1[] PROGMEM = "اضبط";
+static const char RTC_TIME_INVALID_SHORT_AR_2[] PROGMEM = "الوقت";
+static const char RTC_TIME_INVALID_SHORT_EN_1[] PROGMEM = "SET";
+static const char RTC_TIME_INVALID_SHORT_EN_2[] PROGMEM = "TIME";
+static const char STORAGE_ERROR_TEXT_AR[] PROGMEM = "خطأ في حفظ الإعدادات";
+static const char STORAGE_ERROR_TEXT_EN[] PROGMEM = "STORAGE E3";
+static const char STORAGE_ERROR_SHORT[] PROGMEM = "E3";
 static const char SPLASH_TITLE_EN[] PROGMEM = "Basit Apps";
 static const char CARD_RAMADAN_EN[] PROGMEM = "%d days until Ramadan";
 static const char CARD_TEMP_EN[] PROGMEM = "Temperature %d degrees";
@@ -68,6 +79,8 @@ static const char OTA_PROGRESS_AR[] PROGMEM = "تحديث";
 static const char OTA_PROGRESS_EN[] PROGMEM = "Update";
 static const char OTA_SUCCESS_SHORT_AR[] PROGMEM = "تم";
 static const char OTA_SUCCESS_SECOND_AR[] PROGMEM = "التحديث";
+static const char SPLASH_SHORT_AR[] PROGMEM = "بسيط";
+static const char SPLASH_SHORT_EN[] PROGMEM = "Basit";
 
 // ---- PrayerTimes indices: 4 Sunset (not displayed), 5 Maghrib ----
 static const char PROGMEM PRAYER_NAME_AR[][16] = {
@@ -102,14 +115,20 @@ static const char PROGMEM HIJRI_MONTH_SHORT_EN[][10] = {
 // ---- Inline message fragments ----
 static const char MSG_AZAN[] PROGMEM = "أذان %s";
 static const char MSG_EQAMA_IN[] PROGMEM = "الإقامة بعد %d دقيقة";
-static const char MSG_EQAMA_SEC[] PROGMEM = "الإقامة %02d";
+static const char MSG_EQAMA_IN_2X1[] PROGMEM = "الإقامة بعد %d";
+static const char MSG_EQAMA_IN_LARGE[] PROGMEM = "الإقامة بعد %d\x20\x20";
+static const char MSG_EQAMA_SEC[] PROGMEM = "الإقامة بعد %02d\x20\x20";
+static const char MSG_EQAMA_SEC_2X1[] PROGMEM = "الإقامة بعد %02d";
 static const char MSG_EQAMA[] PROGMEM = "الإقامة";
 static const char MSG_JUMAA[] PROGMEM = "الجمعة";
 static const char MSG_PHONE_SILENT_AR[] PROGMEM = "الهاتف صامت";
 static const char MSG_PHONE_SILENT_EN[] PROGMEM = "Phone Silent";
 static const char MSG_AZAN_EN[] PROGMEM = "Adhan %s";
 static const char MSG_EQAMA_IN_EN[] PROGMEM = "Iqama in %d minutes";
+static const char MSG_EQAMA_IN_2X1_EN[] PROGMEM = "Iqama in %d";
+static const char MSG_EQAMA_IN_LARGE_EN[] PROGMEM = "Iqama in  %d";
 static const char MSG_EQAMA_SEC_EN[] PROGMEM = "Iqama %02d";
+static const char MSG_EQAMA_SEC_2X1_EN[] PROGMEM = "Iqama %02d";
 static const char MSG_EQAMA_EN[] PROGMEM = "Iqama";
 static const char MSG_JUMAA_EN[] PROGMEM = "Jumuah";
 

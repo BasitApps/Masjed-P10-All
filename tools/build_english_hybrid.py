@@ -31,13 +31,13 @@ def main():
           ROOT / "lib/DMDESP/fonts/Tahoma7.h",
           ROOT / "lib/DMDESP/fonts/BasitFont7.h")
     merge(ROOT / "lib/DMDESP/fonts/BasitFont16.h",
-          ROOT / "lib/DMDESP/fonts/Tahoma16.h",
+          ROOT / "lib/DMDESP/fonts/TahomaBold16.h",
           ROOT / "lib/DMDESP/fonts/BasitFont16.h")
     merge(ROOT / "lib/DMDESP/fonts/BasitFont7Indic.h",
           ROOT / "lib/DMDESP/fonts/Tahoma7.h",
           ROOT / "lib/DMDESP/fonts/BasitFont7Indic.h")
     merge(ROOT / "lib/DMDESP/fonts/BasitFont16Indic.h",
-          ROOT / "lib/DMDESP/fonts/Tahoma16.h",
+          ROOT / "lib/DMDESP/fonts/TahomaBold16.h",
           ROOT / "lib/DMDESP/fonts/BasitFont16Indic.h")
 
 

@@ -13,9 +13,6 @@
 
 // ============ VERSION ============
 #define EEPROM_VERSION 7 // v6 city IDs migrate in place; no reset of valid settings.
-#ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "P104-rc4"
-#endif
 
 // ============ LANGUAGE ============
 #define LANG_AR 0
@@ -29,6 +26,30 @@
 #define DISPLAY_WIDTH (DISPLAYS_WIDE * 32)
 #define DISPLAY_HEIGHT 16
 #define SMALL_FONT_Y_POS 8
+
+// Advertise the physical panel width so Android never treats a narrow image
+// as the 4x1 P104 image.
+#if DISPLAYS_WIDE == 1
+#define DEVICE_MODEL "101"
+#define DEVICE_VERSION 6
+#define FIRMWARE_VERSION "P101-rc6"
+#elif DISPLAYS_WIDE == 2
+#define DEVICE_MODEL "102"
+#define DEVICE_VERSION 11
+#define FIRMWARE_VERSION "P102-rc11"
+#elif DISPLAYS_WIDE == 3
+#define DEVICE_MODEL "103"
+#define DEVICE_VERSION 12
+#define FIRMWARE_VERSION "P103-rc12"
+#else
+#define DEVICE_MODEL "104"
+#define DEVICE_VERSION 12
+#define FIRMWARE_VERSION "P104-rc12"
+#endif
+
+#ifndef SMARTTEXT_PIXEL_SCROLL
+#define SMARTTEXT_PIXEL_SCROLL 1
+#endif
 
 // ============ TIMING (ms) ============
 #define MS_SECOND 1000UL

@@ -44,6 +44,33 @@ ESP8266 firmware for controlling LED Matrix displays (P10/P4.75) in Mosques. Thi
 
 ## Usage
 
+### Firmware builds and Android packaging
+
+The default build is the production P104 (4x1). USB uploads use115200 baud.
+
+| Panels | Environment | Firmware / Android asset |
+|---|---|---|
+| 1x1 | `p10_1x1_release` | `updateP101.bin` |
+| 2x1 | `p10_2x1_release` | `updateP102.bin` |
+| 3x1 | `p10_3x1_release` | `updateP103.bin` |
+| 4x1 | `p10_4x1_release` | `updateP104.bin` |
+| 4x1 diagnostics | `p10_4x1` | `updateP104_debug.bin` (not packaged) |
+
+Outputs remain in `.pio/build/<environment>/`. To prepare Android assets:
+
+```powershell
+.\tools\release_ota.ps1 -AndroidProject 'C:\Users\m_nag\Desktop\Android_Projects\MasjedClockWiFi'
+```
+
+Choose1-4 for one model, or A for all four. Automation can pass `-Profile All`
+or `-Profile 2x1`, for example. The script builds all selected images before
+copying any, checks SHA256 after each copy, and never flashes a clock or builds
+an APK. Rebuild the app in Android Studio afterward. Firmware versions in the
+Android device catalog are not automatically changed.
+
+Old font/SDK scan experiment environments have been retired; their host tests
+and source switches remain available without adding normal deployment targets.
+
 1. **Power On:** The device will create a WiFi Access Point (e.g., `Masjed_XXXXXX`).
 2. **Connect:** Connect your phone or laptop to this WiFi network.
 3. **Configure:** Open a web browser and navigate to `http://192.168.1.177`.

@@ -12,6 +12,18 @@ all eight P10 builds and both 7-segment builds pass. Android was unchanged in
 this batch; its prior Java compilation passed.
 Physical tests are deferred until the owner returns to the computer.
 
+### 2026-10-13 — Preserve narrow-panel scroll phase on dynamic text
+
+- [x] `SmartText` now preserves the normalized scroll-cycle position when an
+  already-scrolling message changes, such as an iqama countdown changing from
+  `13` to `12`; static-to-scrolling transitions and completed cycles still
+  start normally.
+- [x] Host regression covers 1x1, 2x1 and 4x1 widths in both directions and
+  the default/explicit pixel-scroll paths. All four P10 release profiles build
+  successfully. No firmware upload or settings/time change was performed.
+- [ ] Physical owner verification remains required on the 2x1 and 1x1 panels;
+  long text can still be clipped at the edges while it is moving by design.
+
 **Previous step:** 2026-10-08: P10 now distinguishes RTC disconnect (`RTC E1`)
 from invalid RTC time (`اضبط الوقت` in Arabic, `TIME E2` in English) while stopping cards; 7-segment keeps its
 slot-specific `E1/E2/E4` diagnostics. P10 and 7-segment now share the technician-only
@@ -1210,3 +1222,1004 @@ No firmware/Android runtime/asset/version modification or APK in this batch.
 
 The owner confirmed the final manual test completed without an unexpected
 restart. The firmware performance/memory review is closed for this batch.
+
+### Comprehensive seven-segment source audit — 2026-10-11
+
+- [x] Audited current `Masjed_TA_All_v2` M73/M73s main flows, shared contracts,
+  display/audio, persistence, HTTP/OTA, and affected Android response handling.
+- [x] Both release environments build with asset publication disabled; 25
+  existing RTC/time cases, three C++ checks and three settings source checks pass.
+  New host cases reproduce Friday audio restarts, truncated 120-minute iqama,
+  stale prayer display, frozen test mode, incorrect sync age and TX-only MP3 waits.
+- [x] Findings recorded in `docs/SEVEN_SEGMENT_AUDIT_2026-10-11.md`.
+  Correction to the prior HTTP conclusion: the generated hardened header is
+  not included by current M73/M73s source; both objects use stock Parsing-impl.
+- [x] Audit-only round completed without firmware/Android source changes or publication.
+
+### Approved seven-segment/P10 fixes and iqama 0–99 — 2026-10-11
+
+- [x] Implemented audit findings 1–9 in the actual M73/M73s source and the matching
+  P10 paths: hardened HTTP include, event-scoped audio, safe storage boot, RTC
+  error prayer dashes, millis-paced screen test, TX-only MP3 and RTC sync age.
+- [x] Both firmware APIs and the actual Android Studio UI/save path accept iqama
+  0–99 only. Valid old 100–120 values migrate to99 without reset or layout/version
+  change. Short 1/2-minute iqamas have explicit priority in the shared phase logic.
+- [x] Six core headers now match byte-for-byte, including safe storage mounting.
+  Rendering/audio-specific differences are retained; the prayer formula is unchanged.
+- [x] Both seven-segment and all four P10 release builds succeed. Host verification:
+  25 existing +14 new production-function cases, 11 multipart cases, 7 shared
+  mount faults, 7 P10 real-struct persistence scenarios, MP3/Android map fixtures,
+  three C++ suites and three settings source checks passed.
+- [x] Android compilation and26 unit tests passed. Full lint remains blocked by
+  three pre-existing missing English WhatsApp translations (120 warnings).
+- [ ] Physical RTC/audio/display/save/OTA and long-run validation of this candidate.
+  No hardware upload, Android BIN publication, APK build/install or release bump.
+  Details and local runner locations: `docs/SEVEN_SEGMENT_AUDIT_2026-10-11.md`.
+
+### Approved deeper firmware corrections — 2026-10-11
+
+- [x] Closed all six findings from the second audit in actual P10/M73/M73s
+  sources: pending-restart OTA protection, plain-body OOM rejection, verified
+  M73 settings commit, whole-request multi-file OTA rejection, complete AP
+  password reads and a versioned CRC32 M73 config envelope.
+- [x] Independent review follow-ups fixed and tested: second-file OOM abort
+  notification, status-aware password/startup lookups, failed reset compensation
+  gating and time/prayer cache refresh on recovery. Final bounded source review
+  found no remaining Critical/Important findings.
+- [x] Host checks passed:27 firmware fault cases,16 actual-parser cases,39 prior
+  RTC/prayer/API cases, three C++ suites, three settings behavior tests,7 P10
+  persistence scenarios and7 shared mount faults. Existing MP3 packet/pacing,
+  Android map/iqama fixtures and11 multipart cases also passed.
+- [x] All four P10 release profiles and M73/M73s built successfully after their
+  final source changes. Both M73 builds disabled Android publication explicitly.
+  Six shared core headers and both parser overlays remain byte-identical.
+- [x] M73 storage format2 retains four legacy layouts without reset/boot writes,
+  upgrades on explicit save, and checks CRC before decrypt/migrate. Firmware
+  release versions unchanged. Downgrade requires storage conversion/compatibility.
+- [x] Report and build SHA256s: `docs/FIRMWARE_DEEP_FIXES_2026-10-11.md`.
+  Test commands/requirements: `test/README.md`. No vendor library edit, hardware
+  upload, Android BIN publication, APK build/install or new dependency.
+- [ ] Physical RTC/save/OTA/display/audio, power-loss and long-run verification
+  of this new candidate. Host/source/build checks do not close this release gate.
+
+### P10 live iqama sequence check — 2026-10-11
+
+- [x] Owner-approved `p10_4x1_release` uploaded to COM5; esptool flash
+  verification passed and the board returned to `profile=4x1` with `rtc=1` and
+  `timeValid=1`.
+- [x] Controlled date/time jumps exercised pre-prayer (3 minutes), azan,
+  countdown, last minute, iqama, sleep and azkar in both large and small font
+  modes. Uptime increased throughout with no new reset; original time and
+  settings were restored afterward.
+- [x] Large-font countdown now uses `الإقامة بعد %d` and alternates with
+  `الهاتف صامت`; small font keeps the minute wording. Post-prayer text is
+  `لا تنس السنن` followed by `واذكار الصلاة`.
+- [ ] Pixel-level visual confirmation still requires watching the panel because
+  release firmware exposes health/state telemetry, not rendered-frame readback.
+  M73/M73s physical test and power-loss/long-soak validation remain pending.
+
+### Seven-segment quick solder inspection — 2026-10-12
+
+- [x] Owner-approved 35-second display test implemented in sibling
+  `Masjed_TA_All_v2/src/Masjed_TA.cpp` for both M73/M73s: one middle segment
+  walks 16 grids (1s each), blank 1s, segments A–G walk all grids (1s each),
+  blank 1s, then old digits 0–9 (owner requested 1s per digit). The three
+  TA6932 chips run in parallel; test timing remains non-blocking and exits
+  automatically without changing RTC/configuration/storage/version.
+- [x] Production-function regression reproduces the old same-digit limitation,
+  then passes the new isolated patterns, all three buffers, full-second timing,
+  blank transitions, millis rollover and restarting the sequence.
+  Runner: `python test/seven_segment_display_test.py`.
+- [x] `ta73` and `ta73s` builds succeeded with `BASIT_PUBLISH_ASSETS=0`;
+  existing firmware fault checks passed 27/27. Existing PrayerTimes unused
+  static-declaration warnings remain. No hardware upload or Android publication.
+- [ ] Physical inspection of patterns and observed solder-fault behavior.
+  P10 shimmer experiments remain paused at the owner's request; the experimental
+  millis-based P10 scan source/image was retained, not declared fixed or released.
+
+### Seven-segment quick-test OTA — 2026-10-12
+
+- [x] Owner-connected WiFi clock identified as M73-15, deviceId=15880401;
+  pre-upload POST selfTest returned config/rtc/timeValid/display/wifi=1.
+- [x] Uploaded only the tested ta73 image (412000B,
+  SHA256 `2F0DBF19BBEE11CCC0068999ABDBE3AA07813BEDF93F1570EC5A46A220D57DE5`)
+  via `/updateMain?size=412000`: HTTP200 UpdateOk. Health after AP returned
+  showed Software/System restart, RTC/time valid, profile=7seg. Initial reconnect
+  probe timed out; subsequent health/getData requests succeeded.
+- [x] Complete getData response SHA256 matched before/after OTA without logging
+  the AP password; settings unchanged. No P10/M73s/M71 upload or Android publish.
+- [ ] Owner visual acceptance of the 35-second grid/segment/digit sequence.
+
+### Seven-segment logical grid walk — 2026-10-12
+
+- [x] Replaced the parallel electrical-index walk with one dash across the
+  38 numeric grids used by `show()`: HH/MM/SS, DD/MM/YYYY, Fajr, sunrise,
+  Dhuhr, Asr, Maghrib, Isha, temperature, iqama. Each numeric field walks from
+  its highest place to units. Unused grids/separators are excluded from the walk.
+  Current source maps all three Asr digits to tm2[3,2,4], not across tm2/tm3;
+  no normal display wiring/mapping was changed to match an unverified description.
+- [x] Full test now lasts 57 seconds: 38 single-grid frames, blank, seven segment
+  frames, blank, digits 0–9. All frames remain one second; HTTP entry and normal
+  RTC/configuration/storage/release versions are unchanged.
+- [x] Production-function regression failed against the prior three-chip
+  parallel walk, then passed the logical addresses, clearing of all other grids,
+  complete second holds, two blank transitions, rollover and restart.
+  Both ta73/ta73s builds passed with Android asset publication disabled.
+- [ ] Owner visual acceptance of field order and solder-fault detection.
+- [x] Live M73 deviceId=15880401 OTA returned HTTP200 UpdateOk. Uploaded ta73
+  BIN=412096B, SHA256 `688BDB54F328A6C6CB17F6F283D2B91758514ADACD95E5BCA7E28817135D5CFD`.
+  After reconnecting the saved WiFi profile, health showed normal software restart
+  and selfTest config/rtc/timeValid/display/wifi=1. Full settings response fingerprint
+  matched before/after OTA. No M73s/P10/M71 upload or Android asset publication.
+
+### Seven-segment schematic-based visual correction — 2026-10-12
+
+- [x] Read/rendered all five pages in the owner's three Date/Prayers/Eqama PDFs.
+  Corrected dash traversal to left-to-right schematic positions: date now
+  YYYY/MM/DD (tm1[13..6]), Eqama board S24/S23/S22/S21 (tm3[10,9,8,7]).
+  Prayer rows and time order match the diagrams; Asr stays entirely on U2.
+- [x] All test phases now keep unused GRID outputs blank. Physical segment A
+  mirrors bit0 onto bit7 to support either JA/JH route; DP pins are NC in the
+  diagrams. Segment/number tests corrected without altering normal show(),
+  digits table, RTC, settings, storage, firmware versions or test entry.
+  Duration remains 57s with 1s per number in the final phase.
+- [x] Production-function test failed against previous order, then passed
+  schematic traversal, wired-only buffers, both A routes, digits, timing,
+  blanks, millis rollover and restart. Firmware fault checks passed 27/27;
+  ta73/ta73s builds passed with BASIT_PUBLISH_ASSETS=0.
+- [x] Wiring/reference table and caveats: `docs/SEVEN_SEGMENT_TEST_WIRING_2026-10-12.md`.
+- [ ] Owner confirmation on the real front panel: schematic positions do not
+  prove assembly orientation, actual jumper selection, or solder-fault behavior.
+- [x] Uploaded only ta73 to M73-15 deviceId=15880401: HTTP200 UpdateOk,
+  BIN412144B SHA256 `145C3DC88089F8F186FD921D6CB22AEC34269F41462A962A8936F3407E8BD694`.
+  Saved-profile WiFi reconnect restored access; health/selfTest confirmed normal
+  software restart, rtc/timeValid/config/display/wifi=1 and unchanged full
+  settings-response SHA256. No P10/M73s/M71 upload or Android publication.
+
+### Seven-segment date-first shorter test — 2026-10-12
+
+- [x] Owner requested date before time and roughly half the dash traversal
+  interval. Test now starts tm1[13..6] then tm1[0..5]; each dash holds 500ms.
+  Blank separators, segment steps and final digits retain 1s each. Total 38s.
+  Timing uses the previously displayed frame, so the final grid still holds
+  exactly 500ms before the first blank; the blank holds 1s before segment A.
+- [x] Actual-function regression failed on prior order, then passed date-first
+  traversal, 500ms/1s boundaries, all existing patterns, rollover and restart.
+  Firmware fault checks passed 27/27. Wiring notes/test README updated.
+- [ ] Real-panel confirmation of the faster sequence.
+- [ ] Splash redesign is advice only, not implemented: current startup has
+  2450ms of blocking dash-group delays and a 6000ms contact-number deadline.
+  Owner asked for an opinion, not a splash implementation in this batch.
+- [x] Both ta73/ta73s built successfully with Android publication disabled.
+  Live M73 deviceId=15880401 accepted HTTP200 UpdateOk for BIN412144B,
+  SHA256 `4891E6536302B7048693DF1F84D48BACA92E892DC6DD37D3FBB60CE7156F769A`.
+  Saved-profile WiFi reconnect, healthy RTC/time/selfTest and unchanged settings
+  fingerprint confirmed. No P10/M73s/M71 upload or splash change.
+
+### Seven-segment startup identity beside contact — 2026-10-12
+
+- [x] Owner approved retaining contact `01030007330` while adding model/release
+  during the same six-second startup hold. Existing tm1 contact bytes are
+  unchanged. Model uses tm3[8,7], release uses tm3[10,9] in schematic order.
+  Values derive from FIRMWARE_VERSION, so M73 shows 73/15 and M73s shows 73/14.
+- [x] New digits normalize physical A for either JA/JH jumper. Two-digit release
+  format is guarded at compile time; extend the layout before release 100.
+  No changes to normal show(), settings/RTC, test sequence, version numbers,
+  startup group animation or its existing delays.
+- [x] Actual-function runner failed on the prior blank tm3 startup frame, then
+  passed for both variants: unchanged complete phone frame, model/release,
+  published buffers, 2450ms existing animation and six-second hold/rollover.
+  Existing 38-second display sequence and 27 firmware fault cases also passed.
+- [ ] Owner visual confirmation of simultaneous phone/model/release at boot.
+- [x] Both ta73/ta73s builds passed with BASIT_PUBLISH_ASSETS=0. Uploaded only
+  ta73 to M73-15 deviceId=15880401: HTTP200 UpdateOk, BIN412208B SHA256
+  `B0BE97096B558BE2786296808B205234C4DE3C39F3345DFBAE005C6FCF5BB079`.
+  After saved-profile WiFi reconnect, health/selfTest showed normal software
+  restart, rtc/timeValid/config/display/wifi=1 and unchanged settings fingerprint.
+  No additional restart, display test, M73s/P10/M71 upload or Android publication.
+
+### Seven-segment startup number direction correction — 2026-10-12
+
+- [x] Owner observed startup model/release as 37/51. The assembled front panel
+  reverses the Eqama schematic's drawn digit order; normal show() already uses
+  tm3[7,8] for temperature and tm3[9,10] for iqama. Startup now uses that order
+  for model 73 and release 15 (14 on M73s). No phone, animation, hold duration,
+  accepted dash-test traversal, normal display, settings/RTC or version change.
+- [x] Actual-function test first failed on the previous swapped frame, then
+  passed both M73/M73s variants and existing test timing/phone/published-frame
+  assertions. Firmware fault checks passed 27/27. Reference notes corrected.
+- [ ] Owner visual confirmation of 73/15 after the correction.
+- [x] Both ta73/ta73s builds succeeded with Android publication disabled.
+  Corrected ta73 BIN412208B SHA256 `EE20B9C08C3E0FF17B1233BF6767A0C784313C651BC3F2453C455D81E0680AA3`
+  accepted by M73-15 deviceId=15880401: HTTP200 UpdateOk. Saved-profile WiFi
+  reconnect restored access and unchanged complete settings fingerprint confirmed.
+  Post-OTA RTC responds (rtc=1), but timeValid=0 and selfTest ok=0: time validity
+  is NOT confirmed and must not be reported healthy. No date/time write performed.
+  No P10/M73s/M71 upload or Android publish.
+
+### Seven-segment splash dash-only and full-brightness behavior — 2026-10-12
+
+- [x] Removed the A–G phase from startup. The nonblocking splash now renders
+  only the nine date-first dash groups in about 1953ms, matching the previous
+  total startup-animation time, then keeps the existing phone, model and
+  release frame for six seconds.
+- [x] Splash no longer exits early when configuration, RTC connection or RTC
+  time validation is incomplete. Wi-Fi/server servicing and periodic RTC
+  checks continue normally; the existing error renderer is shown afterward.
+- [x] Brightness is forced to hardware level 7 for the complete splash and the
+  scheduled/user brightness path is restored immediately before normal display.
+  Both ta73 and ta73s display tests pass, firmware fault checks remain 27/27,
+  and both PlatformIO release builds succeed. Firmware was not uploaded yet.
+- [ ] Owner visual confirmation on the real M73 board, followed by cold-power
+  and long-run checks.
+
+### Seven-segment immediate identity startup — 2026-10-12
+
+- [x] The phone/model/release frame is now published immediately after the
+  three TA6932 chips initialize, before LittleFS, RTC, sensor and Wi-Fi setup.
+  On M73 the startup buzzer begins with that frame.
+- [x] The identity frame remains for six seconds while setup completes. Normal
+  brightness is intentionally not applied during the hold; it is restored by
+  the existing splash exit path. The manual dash test and normal runtime
+  display remain unchanged.
+- [x] Added an early-identity regression for both M73/M73s, including full
+  brightness, six-second hold, configured-brightness restoration and rollover.
+  Existing firmware fault checks remain 27/27; both release builds succeed.
+- [ ] Upload this candidate and visually confirm that identity and buzzer begin
+  together; then run cold-power and long-run checks. If setup ever exceeds six
+  seconds, it must be split into loop states.
+
+### Seven-segment nonblocking startup animation — 2026-10-12
+
+- [x] Approved startup redesign: all 38 wired numeric grids cycle A–G at 150ms
+  per frame, then nine dash groups at 100ms (date, time, Fajr, sunrise, Dhuhr,
+  Asr, Maghrib, Isha, Eqama/temperature). Nominal animation 1950ms; unchanged
+  phone 01030007330, model73 and actual release follow for a full 6000ms.
+- [x] splashScreen now advances cooperatively from loop after RTC/AP/server
+  setup, without delay or added storage writes. The same PROGMEM grid table
+  serves manual test and startup. RTC polling continues at most once/second;
+  config/RTC/time faults abort to existing normal error rendering. OTA/restart
+  guards avoid display interference. Removed obsolete unused-grid boot marker
+  and absolute-time expiry; elapsed timing works across millis rollover.
+- [x] Regression first caught the blocking old splash, then passed both variants:
+  exact frames, unused grids dark, both A routes, per-frame holds, complete contact
+  and correctly oriented identity, fault handoff, RTC polling, OTA/restart guards
+  and rollover. Manual 38-second test unchanged; firmware fault checks 27/27.
+- [ ] Owner visual confirmation, controlled cold-power retention and long-run
+  stability. These are not proved by host checks or one successful OTA.
+- [x] Independent review reproduced a shortened contact hold when RTC/display
+  operations take time. Timer anchoring moved after all three display updates;
+  regression first failed with 100ms RTC +2ms/chip latency, then passed for both
+  variants. Fault/OTA guards now tested during animation and contact hold.
+- [x] Independent bounded recheck found no remaining Critical/Important issues.
+  Final ta73/ta73s builds passed with Android publication disabled. Uploaded
+  ta73 only to M73-15 deviceId=15880401: HTTP200 UpdateOk, BIN412048B SHA256
+  `354C00B4D2262E1664D0A9F0302F2DBACD8E3397A716259FCF60C51CBF17B83C`.
+  After saved-profile WiFi reconnect, health/selfTest confirmed normal software
+  restart and config/rtc/timeValid/display/wifi=1; settings response SHA unchanged.
+  No additional restart/time write, P10/M73s/M71 upload or Android publication.
+
+### P10 splash timing and RTC startup sample — 2026-10-12
+
+- [x] Kept the existing company-title and `01030007330` splash unchanged;
+  anchored its ten-second wait to the moment the frame is actually presented,
+  then continue normal initialization and handoff.
+- [x] Removed the duplicate immediate RTC read in `setup()`; `startRTC()`
+  already performs the first validated sample. Runtime sync remains every five
+  minutes, with hour-change/long-stall and 30-second recovery paths unchanged.
+- [x] Startup contract test and `p10_4x1`/`p10_4x1_release` builds pass.
+- [x] DEBUG uploaded on COM5 with flash hash verified. Serial comparison:
+  Wi-Fi on `loopMax=32111us`, stable Wi-Fi off `8488us`; transitional off
+  `112558us` excluded. W/A DEBUG commands disable/restore the AP and inhibit
+  automatic recovery during intentional off; AP was restored afterward.
+  Loop duration is a proxy, not a direct measurement of scan jitter.
+
+### P10 DP5125D timing experiment — 2026-10-12
+
+- [x] Saved pre-experiment DEBUG BIN and driver source outside the repo.
+  Added isolated `p10_4x1_dp5125d` profile for timing trials; latest candidate
+  retains only explicit OE blanking/row transition, with SPI and LAT after
+  data as before. Normal build profiles retain baseline.
+  No scan ratio, SPI speed, brightness setting, storage or prayer logic change.
+- [x] Real-refresh host check preserves bit order across 1-4 panels, both
+  orientations and all four phases, checks blanking, LAT pulse and SPI modes.
+- [x] Baseline and experimental builds succeeded; original BIN rebuilt to
+  identical SHA256. Uploaded experiment to ESP8266 MAC24:4c:ab:4f:ed:96 on
+  COM5 with flash hash verified. Owner reports shimmer gone but dim stray
+  pixels around characters. Serial also captured Hardware Watchdog after
+  `loopMax=9760us`; cause is undetermined.
+- [x] Revised OE blanking to cover LAT falling plus 1us settle. Real-refresh
+  check catches premature enable, then passes the revised path. Rebuilt and
+  uploaded second candidate (431152B, SHA256
+  `3041734952485FE5FB68179C08A225A55CA9B6022B88051954450FD5B2A4566D`).
+- [x] Owner reports second candidate's stray pixels persist but glyphs remain
+  steady. No reset in 65s serial capture, `loopMax=9798us` (not soak proof).
+  Third trial removes overlap/GPIO byte transfer, retaining explicit OE high
+  until LAT/data settle. Host check and experimental build pass; candidate BIN
+  430928B SHA256 `26C38CA73A9200D3BBE70E78A10F69F3B089158865E0E1D4AC3E0ECBE128C4F1`.
+  Upload at512000 failed before writing; retry at115200 succeeded with flash
+  hash verified on the same MAC/COM5.
+  Its 65s serial capture recorded `loopMax=8704us` and no observed restart.
+- [x] Owner reports third candidate's stray pixels much reduced but not gone,
+  and glyph shimmer returned. All three candidates rejected. Removed temporary
+  profile/driver flag and archived the experimental test outside the repo;
+  restored the saved pre-experiment driver/BIN under the owner's rollback
+  authorization. Existing splash/RTC/debug Wi-Fi changes are retained.
+  Driver text matches saved snapshot; `p10_4x1` build succeeds and reproduces
+  SHA256 `9F46E6DF2F4BCA0071BB7E87754DABF16E8F5623C05CD6A3C2F0D64D75FE9230`.
+  Original430896B uploaded on COM5 at115200 to the same MAC, flash hash verified.
+  Controlled RTS reset logged External System, Web server started, RTC OK and
+  Setup done; no extra restart in the short20s boot check.
+- [ ] Root-cause scan/OE waveform capture and long-run reset investigation;
+  no DP5125D timing change is approved for production.
+
+### P10 scan timing diagnostics — 2026-10-12
+
+- [x] Added isolated `p10_4x1_scan_diag` measurements with the original driver
+  timings. Scan LAT gaps/duration and service/yield/HTTP/render maxima report
+  every10s; intentional pause and diagnostic-print intervals are excluded.
+- [x] Real-source host check passes: unchanged GPIO/SPI ordering with hooks
+  on/off,1-4 panels, both orientations/all phases, gap/duration aggregation,
+  pause exclusion and micros rollover.
+- [x] Builds succeeded and diagnostic431488B BIN uploaded on COM5 at115200,
+  flash hash verified (SHA256 `3D25C7B0214B0078F532C66614A912FE14D27378AA0C401E58386601EE36FE83`).
+  Corrected DEBUG A to restart HTTP after restoring AP; W had stopped it.
+- [x] First idle comparison had no peers: active-AP gapMax3.638-4.417ms,
+  stable OFF3.080-4.327ms, zero gaps over5ms. Render loop maxima6-8ms do not
+  imply that scans stop that long because SmartText scans inside rendering.
+- [x] Repeated with phone peer1: four10s windows recorded gapMax33.933,
+  33.520,3.606,43.561ms; HTTP maxima25.102,24.979,0.084,39.216ms.
+  Counts over5ms9,4,0,2. Stable OFF gapMax3.691,3.459,4.211ms, HTTP<=34us,
+  scans414-440us, no intervals over5ms. W/A transition intervals are excluded.
+  AP/HTTP restored. These are software timings, not electrical OE waveforms.
+- [x] SDK3.1.2 WiFiClient::flush waits for remote TCP ACK. Reply-latency host
+  check failed on current sendV2, then passed after removing its redundant
+  explicit flush (payload/status/content-type unchanged).
+- [x] Reply fix uploaded with flash hash verified (431456B SHA256
+  `A11CB688064561D74AEBD94BDC1151EB04ED3EA639F18105F265C0D373A325C2`).
+  Phone connected and modification succeeded; owner reports no visual reduction
+  in shimmer. Measured connected gaps28.244,20.575,17.086,17.404ms with HTTP
+  18.403,11.091,10.226,9.059ms. Different request activity limits direct percentage
+  comparison. Stable OFF gaps3.370-3.882ms had no over5ms intervals. AP restored.
+- [x] Added build-only api/send/storage maxima and worst API path. Diagnostic
+  431808B SHA256 `D5170C6906DFF15D33E387D45813BE47044255ECAF4C109B650A51FEB9F8D4E8`
+  uploaded/hash verified. Its90s passive capture had peers0, so it did not
+  isolate a live API request. Release still reproduces the same reply-fix BIN
+  SHA256 `2748ADACB71162D759DBEFF7E344ADCB403D71DAA37A2F886746ED8EAB3B47D8`.
+
+### P10 SDK timer scan experiment — 2026-10-12
+
+- [x] Confirmed old P170 setup calls dmdInit, which attaches timer0 ISR to
+  dmd.refresh and rearms40000cycles after each scan. Current foreground scans
+  cannot run during blocked HTTP calls; this is an architectural difference.
+- [x] Added isolated `p10_4x1_sdk_scan`: per-instance SDK software timer at1ms,
+  unchanged SPI/data/row/LAT sequence. PWM setup moves to foreground startup,
+  brightness updates and resume, because Core3.1.2 waveform setup may yield.
+  Timer callback does not call PWM APIs, Serial or network functions. Pause
+  disarms and blanks; resume restores current brightness; destructor disarms.
+  This is a software timer, not a hard-real-time ISR or guarantee against flash
+  stalls. Original/release profiles retain foreground scanning.
+- [x] Real-source host checks pass for timer lifecycle/pause/resume, brightness
+  caching, no waveform setup inside callback, and identical data/row/LAT handoff
+  across modes (PWM setup is intentionally excluded from sequence comparison).
+- [x] SDK candidate built/uploaded with flash hash verified (431936B SHA256
+  `2F76B462ED247D960CAFFFDF1F60D42EADD2C1FC77BF80C7340D1E0D24FFAF97`).
+  In100s capture, idle scan gaps2.992-4.170ms; active setDateTime gap14.926ms,
+  HTTP26.911ms; getData gap6.176ms, HTTP14.063ms. No observed restart in this
+  short capture. Owner reports shimmer persists, no stray pixels, phone works.
+- [x] SDK experiment CLOSED/REJECTED: no visual improvement. Stop experiments
+  following owner feedback about excessive testing time. Its isolated source
+  profile remains experimental only; do not publish or enable it by default.
+  Restored foreground-scanning `p10_4x1_release` without DEBUG/scan logs on COM5
+  at115200; upload completed and flash hash verified. BIN427424B SHA256
+  `2748ADACB71162D759DBEFF7E344ADCB403D71DAA37A2F886746ED8EAB3B47D8`.
+  Retains splash/RTC changes and the redundant reply-flush removal. No Android
+  assets, Git publication, settings/RTC writes or extra timing trial.
+- [ ] Shimmer remains unresolved; electrical OE/CLK capture and long-run
+  validation have not been performed. No claim of a hardware root cause.
+
+### P10 whole-screen clearing hypothesis review — 2026-10-12
+
+- [x] Traced clearDisplay/displayText/drawTopClock/drawTopInfo and SmartText to
+  Bitmap writes, buffer presentation and hardware refresh. Small-mode scrolling
+  area is y8..15; clock/info use separate top zones. Unchanged static text is
+  drawn once, not on every scrolling step. Full clear is for explicit transitions,
+  not each scroll/tick. setup enables double buffering; refresh reads displayfb,
+  while clear/draw writes fb, and completed frames swap/copy at presentation.
+- [x] Added/passed real-source host `p10_text_region_test.py`:1-4 panels,
+  Arabic/English shaping and both scroll directions,400 scroll steps per case,
+  static/change/empty/flash preserve top pixels and rendering refresh calls do
+  not expose an incomplete back frame. Rasterization uses a stand-in canvas;
+  this is not a physical flicker test or proof of board buffer allocation.
+- [x] No firmware/library/default change or hardware upload: suggested regional
+  clearing/back-buffer isolation already exists. Redraw-related CPU/scan/PWM
+  timing remains a different hypothesis, not confirmed by this host check.
+
+### P10 packed-pixel scrolling probe — 2026-10-12
+
+- [x] Owner approved isolated shift-and-incoming-column probe. Existing
+  production BIN/source backed up outside repository before edits.
+- [x] Added flag-only SmartText path and `p10_4x1_pixel_scroll` profile; no
+  driver, scan/OE/PWM/SPI cadence, brightness, prayer/storage/RTC/API change.
+- [x] Test first failed for full glyph redraws during movement, then passed
+  103168 byte-identical real-font frame/done samples: eight fonts,1-4 panels,
+  Arabic/English, wrapping, changed/static/empty/flash. Existing host checks
+  pass: firmware faults27/27, HTTP parser16/16, prayer wording, scanner/SDK,
+  reply latency, capture cleanup, startup3/3, region isolation and both M73
+  display fixtures. No physical test is represented by these results.
+- [x] Both builds succeeded. Normal release remains byte-identical to saved
+  original SHA256 `2748ADACB71162D759DBEFF7E344ADCB403D71DAA37A2F886746ED8EAB3B47D8`.
+  Probe428320B SHA256
+  `B553867E78EC43AEB33EDA9B341D7A850348E04C961618DAE4815306B7D3D7D6`
+  uploaded at115200 on COM5, ESP8266 MAC24:4c:ab:4f:ed:96; flash hash verified
+  and normal RTS reset requested. No Android assets/version or settings writes.
+- [x] Owner reports shimmer reduced very substantially, intact letters and
+  successful phone connection/settings changes. These are physical owner
+  observations, not a quantified render/scan-latency measurement.
+- [x] Accepted as default P10 text path after owner confirmation:
+  `SMARTTEXT_PIXEL_SCROLL=1` in constants (override0 retains old rendering).
+  Removed redundant experiment profile. Native comparison now covers default,
+  explicit1 and explicit0; the default-path assertion first failed before
+  adoption. No storage/API/brightness/prayer/scanner changes or new upload.
+- [x] Default/on/off real-font comparison passes with the same103168-frame
+  signature; region/prayer/startup checks also pass. Standard4x1 release build
+  succeeds and reproduces the exact uploaded probe BIN SHA256 `B553867E…`,
+  so no second hardware upload is needed.
+- [ ] Long-run/reset stability and remaining shimmer are not proved resolved;
+  physical confirmation applies to the connected4x1 panel, other sizes are
+  covered by host pixel comparisons, not physical tests.
+
+### P10 current-glyph lookup cache — 2026-10-12
+
+- [x] Owner approved reducing repeated text/font lookup in incoming-column
+  rendering. Saved owner-tested428320B BIN/source outside repo in
+  `p10-glyph-cache-baseline-20261012`, SHA256 `B553867E…` for rollback.
+- [x] Cache current text span and GLCD glyph address/width/pages. Adjacent
+  columns reuse them; crossing a character/spacing span or changing font
+  resolves a new span. reset/text changes invalidate it; direction/shaping
+  changes already call reset. No per-frame heap allocation or framebuffer.
+- [x] Adjacent-column test first failed for repeated width lookups, then
+  passed. Default/on/off real-font comparison passes123648 identical frame/
+  done samples across8 fonts,1-4 panels, Arabic/English, wraps, changes,
+  empty/static/flash and reset/font/direction/shaping transitions.
+- [x] All existing host scripts pass: firmware faults27/27, parser16/16,
+  prayer wording, scan/SDK, replies, capture, startup3/3, region and M73 display.
+  Standard4x1 release builds: RAM37436B (+24B), Flash424291B (+128B).
+  BIN428448B SHA256 `C9B25E2A0D357BB1C6BD127CA3CD9EF87400C9BCBA56F48DBD9B58861DD193C2`.
+- [x] Uploaded candidate428448B on COM5 at115200 to MAC24:4c:ab:4f:ed:96;
+  flash hash verified and RTS restart requested. No time/settings writes.
+- [x] Owner reports shimmer now very slight except a small twitch at initial
+  entry of scrolling/static text; letters and phone/settings remain correct.
+  This accepts the cache improvement, not a claim of zero shimmer.
+- [x] Traced first-frame work: updateText shapes/measures and clears;
+  first scrolling draw clears again and visits glyphs while fully offscreen.
+  Owner approved the bounded entry optimization below. Physical timing and
+  long-run/reset stability remain unproved.
+
+### P10 first-frame rendering work — 2026-10-12
+
+- [x] Saved prior owner-tested cache BIN/source externally in
+  `p10-entry-baseline-20261012`, SHA256 `C9B25E2A…` for rollback.
+- [x] Full-width, byte-aligned, in-bounds text regions clear with packed
+  0xFF row bytes; other regions retain clipped Bitmap clearing. Omit repeated
+  clear in the first scrolling draw (updateText already clears). Hidden left
+  glyphs resolve width only, not bitmap offsets/pixels; placement, gap handling,
+  speed, done flags and existing yield/scan servicing remain unchanged.
+- [x] Entry regression first failed on pixel clearing, then passed; fallback
+  entry clears once.124368 actual-font frame/done samples match across default/
+  on/off paths, eight fonts and1-4 panels, including partial/negative/overflowing
+  regions. All other existing host scripts pass, firmware faults27/27 and
+  parser16/16. These are not electrical/physical latency measurements.
+- [x] 4x1 release builds: RAM37436B unchanged, Flash424371B (+80B).
+  BIN428528B SHA256 `F3D0A4677CC9AA48AC96FAD400B5C571B7435121B2F04D7A8B71EF074C5C9A83`.
+- [x] Uploaded428528B to MAC24:4c:ab:4f:ed:96 on COM5 at115200; flash hash
+  verified and RTS restart requested. No time/settings writes.
+- [x] Owner confirms entry twitch disappeared and letters/phone settings are
+  correct on this candidate. Accept the display optimization sequence on the
+  connected4x1 board: packed scrolling, current-glyph cache and entry work.
+  Retain current BIN SHA256 `F3D0A4677CC9AA48AC96FAD400B5C571B7435121B2F04D7A8B71EF074C5C9A83`.
+  No further source changes/upload from this feedback, nor scanner/PWM,
+  brightness, storage/RTC/prayer/API, version, Android or Git publication.
+- [ ] Long-run/intermittent-reset validation and physical testing of other
+  panel sizes remain separate release gates. Owner's short visual confirmation
+  is not an electrical timing measurement or proof of whole-device stability.
+
+### P10 12-hour soak/reset observation — 2026-10-12 (COMPLETE)
+
+- [x] User requested long-run/reset test and connected PC to clock Wi-Fi.
+  Confirmed live health4x1/rc4, RTC/time valid, heap36504B, reset reason External
+  System from the existing uploaded candidate; no intentional restart.
+- [x] Added read-only collector and5 passing host checks (parsers/uptime/ROM,
+  DTR/RTS-before-open and simulated full-loop result). Existing4x1 release
+  rebuild succeeds; same428528B SHA256 `F3D0A467…`, no firmware edit/upload.
+- [x] The first collector attempt stopped after about49minutes; it was incomplete
+  and showed no reset before stopping. It was not used as the release result.
+- [x] Repeated the test from2026-10-12T03:40:05.603747Z to
+  2026-10-12T15:40:05.603747Z (06:40–18:40 Africa/Cairo) against the exact
+  4x1 BIN SHA256 `F3D0A4677CC9AA48AC96FAD400B5C571B7435121B2F04D7A8B71EF074C5C9A83`.
+  The collector completed the full43200.2seconds:1366 Health samples,139
+  successful selfTests, zero HTTP failures, zero selfTest failures, zero ROM
+  boot markers, zero uptime drops, zero serial errors and RTC/timeValid healthy
+  in every returned sample. Minimum heap36160B and maximum fragmentation4%.
+- [x] One observation gap of about1650seconds (27.5minutes) occurred. The
+  uptime increased across the gap (25490→27165), so no reset was indicated;
+  however, the gap means the collector correctly returned `review_required`,
+  not an uninterrupted `no_reset_observed` result. Network failure alone is not
+  reset proof; ROM and uptime can be two sources for one reset.
+- [x] Final report delivered. The heartbeat follow-up is being disabled after
+  this completion. No firmware, Android asset, Git, OTA or settings-write
+  publication was performed by this soak test.
+- [ ] Physical power/signal integrity, other panel sizes, and OTA/settings-write
+  stress remain unverified release gates.
+
+### Editable Tajawal Bold 16px asset refinement — 2026-10-14
+
+- [x] Rebuilt `GLCDFontCreator2/Fonts/TajawalBold16.ftsd` from the owner's
+  `Tajawal-Bold.ttf` using RAQM/OpenType contextual shaping at high resolution.
+  Replaced vertical clipping with shared optical bands (3 accent / 10 body /
+  3 descender rows); preserved the 224-slot layout and nonjoining side bearings.
+  Corrected all eight lam-alef forms: the preceding generator made only two
+  unique bitmaps by using plain lam+alef for every variant.
+- [x] Loaded through the editor's `SerializableFont` → `Font` path; all 224
+  glyphs round-trip pixel-for-pixel against the staged header, with eight
+  distinct lam-alef bitmaps and 805 connected initial/final edge-pair checks.
+  Comparison, generator and previous FTSD backup are outside the repository in
+  the task's `tajawal-refinement` visualization folder. No firmware integration.
+- [ ] Owner visual approval and real-panel confirmation of this new font.
+
+### P104 Tajawal large-font USB trial — 2026-10-14
+
+- [x] Owner requested upload to USB-connected model104. Verified ESP8266 MAC
+  `24:4c:ab:4f:ed:96` on COM5 and saved its first1MiB flash outside the repo
+  in `tajawal-refinement/p104-upload/flash-before-font-trial.bin` for rollback.
+- [x] Added opt-in `p10_4x1_tajawal_trial` profile. Only Basit/family0 large
+  uses Tajawal; small and Tahoma stay as configured. Indic variant preserves
+  current Basit numeral artwork. Exported glyphs match current editable FTSD.
+- [x] Real Bitmap/SmartText comparisons pass155280 frames per mode across
+  ten fonts (including Tajawal),1-4 panels, Arabic/English and dynamic changes.
+- [x] Trial build and COM5 upload at115200 succeeded; esptool verified flash
+  data hash and requested normal RTS reboot. RAM38572B, Flash434963B;
+  BIN439120B SHA256 `8C4F634E605C52C698582A50ACF06ABCCEEB9E76E0645DACBBBBFB9CB1DC9001`.
+  Uploaded BIN archived beside rollback. Version/storage layout unchanged;
+  no Android asset or Git publication. PC could not reach clock HTTP, so no
+  post-upload RTC/settings/API health claim is made from this run.
+- [ ] Owner screen evaluation of Basit/family0 large text on this trial image.
+
+### Editable Tahoma Bold 16px asset — 2026-10-14
+
+- [x] Owner judged the Tajawal physical trial somewhat acceptable and requested
+  a Tahoma Bold font. Created independent `GLCDFontCreator2/Fonts/TahomaBold16.ftsd`
+  from installed `C:/Windows/Fonts/tahomabd.ttf` (verified family Tahoma/Bold).
+  High-resolution OpenType extraction uses the shared16-row optical grid;
+  existing Tahoma runtime fonts and the uploaded Tajawal trial remain unchanged.
+- [x] Source covers all219 unique required codepoints. All224 FTSD glyphs
+  load via the real editor classes and match staged pixels exactly;805 joining
+  pairs connect and all8 lam-alef variants remain distinct. Preview/generator
+  are external in the task's `tahoma-bold16` visualization folder.
+- [x] Owner requested USB upload. Extended the existing opt-in P104 font trial:
+  family0 large remains Tajawal; family1 large now uses Tahoma Bold, with the
+  owner's existing Tahoma Indic digits retained. Small and normal release
+  profiles keep their original selection. Runtime bitmaps match editable FTSD.
+  Real-renderer checks pass186192 frames per mode across12 fonts and1-4 panels.
+- [x] Build and upload to COM5/MAC24:4c:ab:4f:ed:96 at115200 succeeded;
+  flash hash verified and normal RTS reboot requested. RAM38572B, Flash444931B;
+  BIN449088B SHA256 `57F246CEE7D0054FD2A6C6A75EC5CBA0602F8F33870F87EAE768C2DCBE9E396A`.
+  BIN archived externally in `tahoma-bold16/upload`; earlier Tajawal BIN and
+  pretrial flash remain available for rollback. No settings/time, version,
+  Android asset or Git publication changes; post-upload HTTP was not checked.
+- [ ] Owner's physical-panel comparison of Tahoma Bold versus Tajawal.
+
+### Tahoma Bold dot/hamza refinement and adoption — 2026-10-14
+
+- [x] Owner requested further letter/connection cleanup and replacement of old
+  Tahoma16, then identified missing dots and letter/join shape issues. Compared
+  original OpenType masks with the trial:32 Arabic forms merged detached marks.
+  Separate rasterization and optical placement now preserve source-component
+  counts in all127 Arabic forms;10-row main bodies stay bold, with lower-dot
+  clearance where needed. All2852 initial/medial/final/lam-alef edge pairs pass;
+  SmartText adds no Arabic inter-glyph gap. No representable source
+  counters are missing. ASCII/digit artwork remains as previously configured.
+- [x] Updated `TahomaBold16.ftsd` and added editable Indic sibling. Both load
+  through the editor and match runtime headers pixel-for-pixel. Adopted Bold
+  for family1 large in all normal builds; Tahoma7 is unchanged and Tajawal is
+  still opt-in for comparison. Updated import/export/helper/test consumers.
+  Removed old runtime `Tahoma16.h`/`Tahoma16Indic.h`; archived their previous
+  source FTSD/export files outside the repo in `tahoma-final/retired-fonts`,
+  with runtime backups in the enclosing folder. These remain recoverable.
+- [x] Import validates all8 active font exports. Real renderer passes155280
+  frames per mode across10 active/trial fonts and1-4 panels; release4x1 and
+  comparison4x1 builds pass. Release431440B SHA256
+  `8177A850A8A8109987B2ADC09E8F3ABEEAE9A5DB5246A5BD47AB95746B5371A0`.
+- [x] Uploaded comparison441648B (RAM38572B, Flash437491B) on COM5 at115200
+  to MAC24:4c:ab:4f:ed:96; flash hash verified, normal RTS reboot requested.
+  SHA256 `9F9E4E4923FCB7F7EC0DEAF90B829289D119E2572FC6F1E59802C9899B8E6D44`.
+  No version/settings/time, Android asset or Git publication changes.
+- [ ] Owner confirmation of refined glyphs on the actual panel; other hardware
+  sizes and post-upload HTTP health were not checked in this font-only batch.
+
+### One-shot P104 Arabic font bench — 2026-10-14
+
+- [x] Owner approved a temporary visual test for Arabic dots/joins. Added
+  opt-in `p10_4x1_font_visual_test`, inheriting the existing comparison build.
+  After splash,18 centered static Tahoma Bold16 pages hold6s each: similar
+  isolated letters/hamzas/lam-alef, then contextual words. No configuration,
+  time, font artwork, version or storage-layout writes. Normal build excludes
+  this path. During108s bench display, normal cards/fault/prayer indications
+  are suppressed; RTC/software ticks, server/Wi-Fi and OTA guards continue.
+  Completion restores configured font/layout and card entry once; reboot
+  repeats the temporary test. This image is not for mosque deployment.
+- [x] New real ArabicShaper/Bitmap/SmartText host check first failed because
+  sequence was absent, then passes18 static128px pages,6s pixel holds,
+  one-shot completion/restoration and rollover. Default4x1 and bench build
+  pass; bench RAM38588B (+16B), Flash438899B. Existing renderer124368 frames
+  per mode, startup3, firmware faults27, parser16, scan diagnostics/SDK/reply/
+  capture/region, soak5 and both7-segment host variants pass.
+  `p10_prayer_sequence_test.py` remains FAILED on a pre-existing text fixture:
+  expected `لا تنس السنن واقامة الصلاة`, current owner source is
+  `لا تنس السنن واذكار الصلاة`; neither wording nor fixture was changed here.
+  Soak check was rerun successfully with PlatformIO Python (pyserial), after
+  system Python lacked that dependency. Existing library compiler warnings
+  remain; no new dependencies installed.
+- [x] Uploaded443056B to COM5/MAC24:4c:ab:4f:ed:96 at115200; esptool verified
+  flash data hash and requested RTS reboot. SHA256
+  `616817D99F1952C9ED267493143C0563086EAC4BA55A4B38CF08F35845E06DAE`.
+  Archived externally in `font-visual-test-20261014/P104-font-test.bin`.
+  Previous comparison/release backups remain. No Android or Git publication.
+- [ ] Owner observation of specific missing dots/bad joins on physical panel;
+  post-upload API/RTC health was not checked in this USB font-test batch.
+
+### Tahoma small7px optical refinement — 2026-10-14
+
+- [x] Owner requested small Tahoma cleanup. Source comparison found73 Arabic
+  forms with merged/missing marks or fragmented bodies in the prior bitmap.
+  Refitted real Tahoma outlines to a common row4 joining rail, separately
+  hinting dots/hamzas, preserving bowls and keeping marked edges away from
+  neighbouring glyphs. Seven rows retained; no whole-font dilation. Hand
+  hints keep alef stems thin and jeem/hah/khah final bowls open at this scale.
+- [x] Updated runtime/export `Tahoma7.h` and `Tahoma7Indic.h`, and editable
+  `GLCDFontCreator2/Fonts/Tahoma7.ftsd` / `Tahoma7Indic.ftsd`. Original ASCII,
+  Western/Indic digit artwork retained byte-for-byte. No large-font, shaper,
+  rendering, settings/time/version or storage changes. Backups, reproducible
+  optical-fit scripts and preview are external in task folder `tahoma-small`.
+- [x] New font checks first fail on old merged madda, then pass127 forms,
+  detached marks/open bowls,8 distinct lam-alefs and2944 joined pairs per
+  variant (zero neighbouring-mark merges), plus export/Indic parity.
+  Real editor loads all224 seven-row glyphs. Import validates all8 exports.
+- [x] Real FTSD/editor-export roundtrip exposed a pre-existing single-page
+  packing bug:7px export shifted bitmap rows left by one bit. Corrected only
+  `FontExport` packing for heights below8; multi-page behaviour unchanged.
+  Roundtrip now passes both small/large Tahoma variants. Recompiled local
+  editor class; restart an already-running editor to load the correction.
+  Small-font helper outputs now target the existing `Fonts` directory.
+- [x] Normal1x1/4x1 release builds pass. P104 RAM38572B unchanged,
+  Flash427459B (+176B); BIN431616B SHA256
+  `0B72DDD579C3F1AAB90FD444A9C322EF29DFD19D1FDB00B0EED41DB12BE26BA0`.
+  Real renderer124368 frames per mode across8 fonts/1-4panels, font bench,
+  startup, firmware faults27/parser16, scan/SDK/reply/capture/region, soak5
+  and7-segment host checks pass. Existing `p10_prayer_sequence_test.py`
+  still fails its outdated `واقامة الصلاة` text fixture; owner source remains
+  `واذكار الصلاة`, unchanged. Existing vendor compile warnings remain.
+- [ ] Physical small-font observation. No upload, serial access, Android asset
+  or Git publication in this batch; connected clock still has prior font-bench
+  image until owner requests the next upload. Host tests do not certify panel
+  legibility or electrical behaviour.
+
+### P104 small-Tahoma upload — 2026-10-14
+
+- [x] Owner requested upload. Rebuilt `p10_4x1_tajawal_trial`: normal cards,
+  no `P10_FONT_VISUAL_TEST`; accepted Tajawal/Basit large and Tahoma Bold large
+  retained, with refined Tahoma small Western/Indic fonts. Fresh small-font
+  tests and real editor roundtrips pass. RAM38572B, Flash437667B; BIN441824B,
+  SHA256 `57DB695B8C8596D8E45FFD3116AC9D29BFB556EDA230032976EB2D095DCA918D`.
+- [x] COM5 preflight MAC24:4c:ab:4f:ed:96 matches tested P104; no running soak
+  process found. Uploaded at115200, esptool verified flash data hash and
+  requested RTS reboot. BIN archived externally as
+  `tahoma-small/P104-small-font-comparison.bin`; previous images retained.
+  No filesystem erase, settings/time commands, version change, Android or Git
+  publication. Only upload and its normal resets performed on hardware.
+- [ ] Owner physical evaluation with Tahoma + small selected. Post-upload
+  network/API/RTC state and display appearance were not independently checked.
+
+### Bounded P10 eight-row comparison — 2026-10-14
+
+- [x] Owner rejected small-font panel legibility despite structural checks:
+  dot spacing makes thin strokes weak and seven-row bodies look unnatural.
+  Approved a three-word8px probe (`الصلاة`, `الإقامة`, `المغرب`) before a full
+  redesign, and removal of small-font hamza/madda distinctions. Created
+  `TahomaP10_8_Trial` with hand-hinted thick stems/rails and open bowls;
+  alef variants alias plain alef, waw/yeh hamza alias their plain forms,
+  lam-alef variants alias plain ligatures and standalone hamza is blank.
+  UTF-8/shaper and large fonts are untouched. Other glyphs are provisional
+  seven-row fallbacks: this is NOT an approved complete replacement.
+- [x] Generated matching runtime/export header and editable
+  `GLCDFontCreator2/Fonts/TahomaP10_8_Trial.ftsd`. Opt-in
+  `p10_4x1_small8_test` reuses the bench: old7px above/new8px below, three
+  static words10s each after splash, then configured display restored once.
+  Normal cards/fault/prayer indications are suppressed only during30s bench;
+  RTC ticks, Wi-Fi/server and OTA guards continue. Reboot repeats the probe.
+  No production font selection, settings/time/storage/version changes.
+- [x] Prototype test first failed on missing font; small bench first failed
+  the three-page bound. They now pass aliases/ASCII parity and word widths
+  36/42/41px with100/111/113 lit pixels (each >=1.35x current glyph ink),
+  both populated screen rows, stable holds, one restore and timer rollover.
+  Ink counts do NOT certify perceived brightness/naturalness on hardware.
+  Real editor export parity passes7/8/16px; real renderer139824 frames per
+  mode across9 fonts/1-4panels passes. Other local firmware27/parser16,
+  startup, scan/SDK/reply/capture/region, soak5 and7-segment checks pass.
+  Existing `p10_prayer_sequence_test.py` still fails the outdated `واقامة`
+  wording fixture; current owner `واذكار الصلاة` is unchanged.
+- [x] Both comparison/bench builds pass. Non-bench comparison BIN retains
+  prior SHA57DB695B… exactly. Bench RAM38588B, Flash439715B, BIN443872B
+  SHA256 `62B593BAB0596A1C9ECE3C9CC877992ED284B5881A7365AC024D3D9DB42C371D`.
+  Generator/pixel-gap preview and BIN archived externally in `tahoma-small`
+  (`build_trial8.py`, `trial8-comparison.png`, `P104-small8-three-words.bin`).
+- [x] Uploaded to verified COM5/MAC24:4c:ab:4f:ed:96 at115200; esptool
+  verified flash data hash and requested RTS reboot. No filesystem erase,
+  settings/time commands, Android or Git publication. Previous BIN retained.
+- [ ] Owner physical comparison before extending the font; post-upload
+  API/RTC health and perceived brightness were not independently checked.
+
+### Complete P10 Tahoma Bold 8px small-font trial — 2026-10-14
+
+- [x] Replaced the three-word prototype with a complete 8-row Arabic family:
+  all 127 contextual forms are populated from the reviewed Tahoma Bold 16px
+  artwork using 2x2 max-pooling, while existing Tahoma7 ASCII and digit
+  pixels remain byte-identical. Small-font-only aliases map alef hamza/madda
+  variants to plain alef, waw/yeh hamza to their plain forms, and all
+  lam-alef variants to the plain ligature; standalone hamza is blank.
+- [x] Added matching runtime headers and editable
+  `GLCDFontCreator2/Fonts/TahomaP10_8_Bold.ftsd` / Indic sibling. The
+  FontCreator batch now regenerates both assets. Full coverage, alias,
+  width, ASCII-parity, real-editor roundtrip, and renderer/scroll tests pass.
+- [x] Added opt-in `p10_4x1_small8_full_test`, which uses the new family only
+  for configured Tahoma small text; large fonts, Basit small text, settings,
+  storage, Android assets, and release selection remain unchanged. Build:
+  RAM38572B, Flash437507B, BIN441664B, SHA256
+  `F8F9FC22EA4A85F515877096C768F6FF26E094B4D127871AF2977E614E2B7826`.
+- [x] Uploaded that opt-in trial to the verified P104 on COM5
+  (MAC `24:4c:ab:4f:ed:96`) at 115200; esptool verified the flash hash and
+  performed a normal RTS reset. The BIN is archived in the external
+  `tahoma-small` task folder. No settings/time/filesystem/Android/Git change.
+- [ ] Physical-panel comparison and legibility check are still required before
+  making the new font the default release small Tahoma family. The existing
+  prayer-sequence fixture remains outdated and was not changed.
+
+### P10 small-font weight correction — 2026-10-14
+
+- [x] Owner rejected the first full Bold trial because 2x2 max-pooling filled
+  internal counters and reduced letter clarity. The direct regular TTF render
+  was also rejected as too sparse at 8px, so it was not uploaded.
+- [x] Built a medium-weight complete family from the same reviewed Tahoma Bold
+  source using a 2-of-4 block threshold. All 127 forms, hamza aliases,
+  lam-alef aliases, ASCII parity, FTSD roundtrip, and 13-font renderer/scroll
+  checks pass. Large fonts and Arabic shaping remain unchanged.
+- [x] Uploaded the medium trial to COM5/MAC `24:4c:ab:4f:ed:96` at 115200;
+  esptool verified the flash hash and performed the normal RTS reset. BIN:
+  `P104-small8-medium-trial.bin`, SHA256
+  `55037A0C4C302DC3F15358B2CE99449547D39FF0ED60C625F2D4453B139BAB1D`.
+- [ ] Owner must compare the medium trial on the panel before release adoption.
+  The prior Bold image remains archived only for rollback.
+
+### Rejected small-font experiments — 2026-10-14
+
+- [x] Owner rejected both the full Bold and reduced Medium Tahoma 8px trials
+  as less clear than `BasitFont7`. The normal P104 firmware was restored and
+  uploaded to COM5/MAC `24:4c:ab:4f:ed:96`; esptool verified the image hash and
+  performed a normal RTS reset. No settings or stored data were changed.
+- [ ] Keep `BasitFont7` as the preferred small-font choice unless a future
+  redesign starts from a fresh visual specification rather than further
+  thinning/dilating the Tahoma bitmap.
+
+### Small-font selection finalized — 2026-10-14
+
+- [x] Small text now always uses `BasitFont7` / `BasitFont7Indic`, regardless
+  of the selected large-font family. The family selector continues to choose
+  Basit or Tahoma for the 16px large font only.
+- [x] Removed the obsolete normal-card `P10_SMALL8_MEDIUM_TEST` build target;
+  the three-word visual probe remains opt-in and is not a production path.
+- [x] `p10_4x1_tajawal_trial` build passed: RAM 38572B, Flash 434675B. No
+  firmware upload was performed.
+
+### Original Basit font restored and uploaded — 2026-10-14
+
+- [x] Removed the Tajawal large-font override; family 0 now uses the original
+  `BasitFont16` / `BasitFont16Indic` and BasitFont7 small-font family.
+  Tahoma remains available only when family 1 is selected.
+- [x] Built and uploaded the P104 image to COM5/MAC `24:4c:ab:4f:ed:96`;
+  esptool verified the flash hash and performed a normal RTS reset. BIN SHA256:
+  `C8759FF9CBB428EBA6892DD10260B9368A13EF92C92DD8258FF47F7ECDA2E47D`.
+- [x] Android display label changed from `Basit / Janat` to `بسيط`; the
+  Android debug APK was rebuilt separately. No APK installation/publication.
+
+### Arabic final-form lookup corrected; owner artwork preserved — 2026-10-15
+
+- [x] Corrected the shared generator/map: teh-marbuta is RIGHT-joining;
+  isolated slot155 and final slot158 are used, while156/157 remain reserved
+  at their existing positions. FE94 pre-shaped input also resolves to158.
+  No runtime renderer, scrolling, configuration or API changes.
+- [x] Python's positional reference now respects the current letter's joining
+  property, including non-joining hamza. New independent oracle failed before
+  the fix, then passed1327 positional cases plus explicit words, harakat,
+  lam-alef, ASCII and runtime pre-shaped/digit cases:1343 C++ /1339 Python.
+  The checked-in map reproduces exactly from its generator.
+- [x] SHA256 comparison of all46 files in runtime fonts, editable `Fonts`
+  and `Exports` confirms every byte unchanged. No bitmap normalization,
+  Indic synchronization, font export or editable-project regeneration was
+  performed. Owner glyph/numeral changes remain intact; previously diagnosed
+  asset differences between digit variants remain outside this correction.
+- [x] Updated specification/editor-builder labels to identify the reserved
+  teh-marbuta slots. Existing FTSD files are untouched.
+- [x] Real Bitmap/SmartText scroll regression passed across13 fonts and1–4
+  panels:201648 samples per mode, default and explicit pixel-scroll agree.
+- [x] All four release profiles built successfully (1x1/2x1/3x1/4x1);4x1
+  RAM38572B, Flash424451B. Editor-builder Java source also compiles.
+- [ ] No hardware upload, Android asset publication or Git publication in
+  this batch; physical observation of final-form joins remains pending.
+
+### Narrow-panel alert and alternating-text corrections — 2026-10-15
+
+- [x] Reproduced both defects against production rendering before editing:
+  oversized flashing alerts were centered/clipped, and timed alternation
+  replaced scrolling text before its complete pass on 1–4 panel profiles.
+- [x] SmartText keeps blinking for fitting alerts and continuously scrolls
+  oversized alerts through the existing pixel engine. Fonts, glyph artwork,
+  scan timing, regional clearing and buffer handoff are unchanged.
+- [x] Large-font paired displays start at the first message. Each scrolling
+  message completes its pass; each fitting message holds for five seconds
+  from its first rendered frame. Explicit display/config resets restart the
+  pair; static hold arithmetic handles millis rollover. Prayer-stage changes
+  still take priority over a running message.
+- [x] Replaced obsolete prayer source-string assertions with real
+  `displayText`/`checkPrayers`, SmartText, shaping and Bitmap execution:
+  12 profile/group runs pass, including384 alert/font/language combinations,
+  both texts in each pair, live clock/count changes, transitions to short/empty
+  alerts, normal-card completion and every prayer phase. The fixture covers
+  six active font/digit variants, Arabic/English, 1–4 panels and20/70ms scroll.
+- [x] Existing pixel-scroll regression passes201648 samples per mode across
+  13 fonts. Text-region isolation, independent Arabic shaping and startup
+  checks pass. A bounded independent code review found no actionable defect;
+  its own test execution was blocked by Windows DLL error623, so execution
+  results are from the parent run with the approved local compiler.
+- [x] All four release builds pass. RAM/Flash bytes:1x1=38488/423519,
+  2x1=38512/423671,3x1=38548/424787,4x1=38556/424923.
+  Pre-existing PrayerTimes/Bitmap compiler warnings remain outside this fix.
+- [ ] Physical confirmation of this corrected image remains pending. No
+  firmware upload, device time/settings change, Android asset publication,
+  firmware version bump or Git publication in this batch.
+
+### Owner's revised Basit7 copied to Indic — 2026-10-15
+
+- [x] Copied all214 non-digit records from the current `BasitFont7.ftsd`
+  into `BasitFont7Indic.ftsd`, preserving its identity and all10 original
+  digit records.71 non-digit records changed. Java serialization roundtrip
+  verifies each entire glyph record, including width, pixels and comment.
+- [x] Refreshed only the Indic editor export and runtime header. All214
+  runtime non-digits match the actual editor export of the owner FTSD;
+  all10 runtime Indic digits match their previous values exactly.
+- [x] Pixel-scroll regression passes201648 samples per mode over13 fonts
+  and1–4 panels. Default `pio run` succeeds:RAM38788B,Flash428427B.
+- [ ] Existing Western `BasitFont7.h` exports are shifted down one pixel
+  relative to their editable FTSD (e.g. zero columns62/65 vs124/130).
+  Preserved the owner's Western FTSD/export/runtime files as requested;
+  no normalization of those files, device upload or Git publication.
+  Before-change Indic project and headers are archived outside the repo in
+  `basit7-sync-20261015` under this task's visualization directory.
+
+### Small-font top-row alignment and zone isolation — 2026-10-16
+
+- [x] Reproduced the owner observation: both current small-font headers have
+  global ink mask0xFE (row0 blank), top-info layout reserved4 right pixels,
+  and oversized clock glyphs could write into the adjacent info zone.
+  Host tests failed row-zero/zone isolation and the3x1 clock-fit case first.
+- [x] Top rendering now removes only globally blank font rows, cached per
+  font. Current fonts move up one pixel; already bit0-aligned fonts do not
+  move. Lower-row positioning and all font/editor assets remain unchanged.
+- [x] Removed the right margin. Info aligns its actual ink to the right edge.
+  A shared8-row Bitmap scratch buffer renders clock/info, then copies only
+  the owning zone into the back buffer. Wide glyphs cannot overwrite the
+  other half or the lower row. The allocation is once-only,32–128 bytes
+  depending on panel width; allocation failure safely skips top drawing.
+- [x] Clock retains hours/minutes, dropping period then seconds only when
+  necessary. Long info uses shorter weekday/date/silent formats after the
+  existing Hijri fallbacks; hard clipping still protects zone boundaries.
+- [x] All12 top-line test groups pass across1-4 panels, including6144 clock/
+  card fits, both digit styles/languages, all hours/weekdays/Hijri months,
+  an oversized synthetic font and an already bit0-aligned font. Bottom rows
+  remain byte-identical. Prayer-sequence, pixel-scroll, region and startup
+  regressions also pass. Hardware refresh latency is not established here.
+- [x] All four final release builds pass. RAM/Flash bytes:
+  1x1=38528/423967,2x1=38552/424151,3x1=38620/426067,
+  4x1=38644/426259. Existing PrayerTimes warnings remain.
+- [ ] No hardware upload, clock/settings write, Android assets or Git
+  publication. Physical confirmation of this candidate remains pending.
+
+### Owner-requested P104 USB upload — 2026-10-16
+
+- [x] Identified the attached COM5 clock by chipID0x4FED96 /
+  MAC24:4c:ab:4f:ed:96, matching the previously verified4x1 P104 board.
+  Rebuilt `p10_4x1_release`, then uploaded430416B through esptool at115200.
+  Data hash verification passed and the tool issued the normal RTS reset.
+  BIN SHA256:`2E2D29A02A728E11DAC4F40444FC55B163D3FF11AAD198ADAA2091E6F4D3723E`.
+- [ ] Post-upload HTTP health could not be read: PC Wi-Fi remained
+  disconnected, and Windows blocked netsh reconnect on location permission.
+  This is not evidence of clock network failure. Owner must confirm top-row
+  appearance on the panel. No settings/time/filesystem/Android/Git writes.
+
+### Owner's one-pixel margins and simpler clock format — 2026-10-16
+
+- [x] Removed both adaptive clock-deletion branches (period and seconds).
+  Clock/info use a fixed64px split on3x1/4x1;3x1 info uses its remaining32px
+  with existing compact formats plus day/month and shorter weekdays when
+  needed. The established1x1 HH:MM format remains unchanged.
+- [x] Simplified top-zone copying to one measured ink rectangle. Clock ink
+  starts at x=1; info ends at screenWidth-2, leaving one blank outer pixel.
+  Region clipping, font-aware top-row lift and untouched lower rows remain.
+- [x] Revised tests first failed old margins/3x1 seconds retention, then
+  all12 groups passed.6144 font/language/date fit cases now assert the
+  margins and two clock colons on2-4 panels. Actual prayer-display and
+  lower-region regressions pass; all four release builds pass.
+- [x] Final build RAM/Flash bytes:1x1=38528/424463,2x1=38552/424599,
+  3x1=38644/426259,4x1=38644/426259. Existing library warnings remain.
+- [x] Reconfirmed COM5 chipID0x4FED96/MAC24:4c:ab:4f:ed:96 and uploaded
+  the430416B P104 release at115200. Flash data hash verified; normal RTS
+  reset followed. BIN SHA256:
+  `5E075E8E7B226F54A953EE662812F3C4712B764E2BFD65D2931C20E3ED015C0D`.
+- [ ] Owner visual confirmation remains pending. No font artwork, device
+  settings/time, Android assets or Git publication.
+
+### Build-profile cleanup and Android-compatible firmware names — 2026-10-16
+
+- [x] Retained four production environments and one4x1 serial-debug environment;
+  default builds now select `p10_4x1_release`. USB speed is115200 as used in
+  the verified uploads. Retired development duplicates and font/scan experiments.
+- [x] Release artifacts now match the Android catalog:1x1=`updateP101.bin`,
+  2x1=`updateP102.bin`,3x1=`updateP103.bin`,4x1=`updateP104.bin`.
+  Debug emits `updateP104_debug.bin` and is excluded from Android packaging.
+  Manifest generation and packaging consume the same new filenames.
+- [x] Packaging offers1-4/A interactively or `-Profile All`/individual profile;
+  builds the complete selection and validates all outputs before copying any,
+  then verifies SHA256 per Android asset. The former always-P104 destination
+  bug is removed. Seven disposable-directory packaging checks pass, including
+  paths with spaces, single/all/interactive selection and failure/no-copy cases.
+- [x] Created and read back `C:/Users/m_nag/Desktop/Prepare P10 Android.lnk`;
+  target is Windows PowerShell with the real Android project path and the
+  packaging script. Window remains open to show results or errors.
+- [x] All five actual PlatformIO builds pass. Release BIN sizes for1-4 panels
+  are428592/428736/430416/430416B; debug is433872B. Existing Bitmap/PrayerTimes
+  warnings remain. Full real-compiler packaging to a disposable Android tree
+  passes for all four profiles, including every post-copy SHA256 check.
+- [x] All20 documented/startup/packaging host invocations pass. The soak unit
+  check initially lacked `serial` in Python314; its five tests pass under the
+  existing PlatformIO Python environment with pyserial (no installation needed).
+  Independent bounded review found a relative-path destination defect; a new
+  test reproduced it, and resolving the asset path before changing directories
+  fixes it. All seven packaging tests pass after that correction.
+- [x] No clock upload, actual Android asset replacement, catalog version bump
+  or Git push. The shortcut replaces selected Android assets only when run;
+  rebuilding the APK and managing release-version numbers remain manual.
+
+### Language-independent digit/Latin spacing — 2026-10-17
+
+- [x] Reproduced touching digits after the owner removed embedded side bearings:
+  the old rule spaced only Latin pairs in English and only digit pairs in Arabic.
+  The new tight-font pixel test failed before the production change.
+- [x] Added one shared `needsTextGap` rule for adjacent ASCII letter pairs and
+  adjacent digit pairs, independent of UI language or scroll direction. Static
+  app drawing/measurement and SmartText drawing/measurement/incoming columns
+  use it. Arabic joins, letter/digit boundaries, punctuation and explicit spaces
+  retain their existing behavior. No font/editor bitmap or EEPROM changes.
+- [x] Tight7/16px synthetic fonts pass measured-width, exact pixel-gap, static
+  threshold, every-frame scroll-cycle and connected-Arabic tests in default,
+  disabled and enabled pixel-scroll modes. Existing real-font host fixtures
+  include the shared rule and preserve production function extraction.
+- [x] Bounded independent review found no actionable issue. Broader host checks
+  passed except the hidden-entry performance assertion, which caught unnecessary
+  clearing of new Latin gaps outside the screen. Gap coordinates are now checked
+  before clearing; rerunning the pixel-scroll test passes201648 samples per mode
+  across13 real fonts and1-4 panels, with no hidden glyph/rectangle work.
+- [x] Final four release rebuilds pass; RAM remains38528/38552/38644/38644B
+  for1-4 panels. Existing library warnings remain. The tight-font recheck passes
+  all three scroll modes after the off-screen guard; the other20 host invocations
+  pass collectively after rerunning the one failing pixel-scroll test.
+- [ ] No hardware upload, Android assets or Git publication. Physical
+  confirmation of this image with the owner's revised artwork remains pending.

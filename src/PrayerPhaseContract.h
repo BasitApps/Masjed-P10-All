@@ -19,16 +19,17 @@ inline PrayerPhase prayerPhase(int16_t since, int16_t eqama, int16_t sleep)
 {
   if (since >= -3 && since < 0)
     return PrayerPhase::PreAzan;
+  // Short iqamas must not disappear inside the two-minute azan window.
+  if (eqama > 0 && since == eqama)
+    return PrayerPhase::Eqama;
+  if (eqama > 1 && since == eqama - 1)
+    return PrayerPhase::EqamaSeconds;
   if (since >= 0 && since <= 1)
     return PrayerPhase::Azan;
   if (eqama <= 0)
     return PrayerPhase::Outside;
   if (since >= 2 && since < eqama - 1)
     return PrayerPhase::EqamaCountdown;
-  if (since == eqama - 1)
-    return PrayerPhase::EqamaSeconds;
-  if (since == eqama)
-    return PrayerPhase::Eqama;
   if (since > eqama && since < eqama + sleep)
     return PrayerPhase::Sleep;
   if (since >= eqama + sleep && since < eqama + sleep + 1)

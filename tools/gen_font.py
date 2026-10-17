@@ -14,9 +14,9 @@ Modes:
   sheet       Contact-sheet of every slot in any GLCD header (labeled)
 
 Examples:
-  python tools/gen_font.py ttf --font C:/Windows/Fonts/arial.ttf --height 16 ^
-      --out-font lib/DMDESP/fonts/Tahoma16.h --out-map src/arabic_glyph_map.h
-  python tools/gen_font.py preview --font lib/DMDESP/fonts/Tahoma16.h ^
+  python tools/gen_font.py ttf --font C:/Windows/Fonts/tahomabd.ttf --height 16 ^
+      --out-font lib/DMDESP/fonts/TahomaBold16.h --out-map src/arabic_glyph_map.h
+  python tools/gen_font.py preview --font lib/DMDESP/fonts/TahomaBold16.h ^
       --scale 8 --out tools/out/preview.png --text "الصلاة على النبي"
 """
 
@@ -48,7 +48,8 @@ LETTERS = [
     ("waw_hamza",      0x0624, "RIGHT", [("ISO", 0xFE85), ("FIN", 0xFE86)]),
     ("beh",            0x0628, "DUAL",  [("ISO", 0xFE8F), ("INI", 0xFE91),
                                         ("MED", 0xFE92), ("FIN", 0xFE90)]),
-    ("teh_marbuta",    0x0629, "DUAL",  [("ISO", 0xFE93), ("INI", 0xFE94),
+    # Keep the old four slots; INI/MED are reserved, never contextual forms.
+    ("teh_marbuta",    0x0629, "RIGHT", [("ISO", 0xFE93), ("INI", 0xFE94),
                                          ("MED", 0xFE94), ("FIN", 0xFE94)]),
     ("teh",            0x062A, "DUAL",  [("ISO", 0xFE95), ("INI", 0xFE97),
                                         ("MED", 0xFE98), ("FIN", 0xFE96)]),
@@ -131,9 +132,11 @@ for (_seq, _iso, _fin) in LAM_ALEFS:
     FORMS.append(Form(ARABIC_SLOT_BASE + len(FORMS), _fin, "lam_alef", "FIN"))
 assert len(FORMS) == 127, f"inventory must be 127 forms, got {len(FORMS)}"
 
-CP_TO_SLOT = {}               # presentation cp -> first slot owning it
+CP_TO_SLOT = {}               # presentation cp -> canonical form slot
 for _f in FORMS:
-    CP_TO_SLOT.setdefault(_f.cp, _f.slot)
+    # Reserved teh-marbuta aliases must not hide its real final artwork.
+    if _f.cp not in CP_TO_SLOT or _f.tag == "FIN":
+        CP_TO_SLOT[_f.cp] = _f.slot
 
 JOIN_RIGHT = {}               # base cp -> connects to previous letter?
 JOIN_LEFT = {}                # base cp -> allows next letter to attach?
@@ -191,7 +194,7 @@ def shape(text):
                 i = j + 1
                 continue
         if cp in JOIN_RIGHT:                      # an Arabic letter
-            prev_link = bool(logical and logical[-1][0])
+            prev_link = bool(logical and logical[-1][0] and JOIN_RIGHT[cp])
             j = i + 1
             while j < n and cps[j] in TRANSPARENT_CPS:
                 j += 1
@@ -205,7 +208,16 @@ def shape(text):
         else:
             logical.append((False, cp))           # ascii passthrough
         i += 1
-    # Visual reorder: walk backwards; arabic glyphs reversed, ASCII runs kept.
+    # Pure LTR text must keep its original order.
+    has_arabic = any(v >= ARABIC_SLOT_BASE for _, v in logical)
+    if not has_arabic:
+        return [v for _, v in logical]
+
+    def is_bidi_separator(v):
+        return v in (0x20, 0x09, 0x0A, 0x0D)
+
+    # Visual reorder: walk backwards; Arabic glyphs reverse, while each LTR
+    # run stays intact. Whitespace is a boundary between the runs.
     out = []
     i = len(logical) - 1
     while i >= 0:
@@ -213,9 +225,13 @@ def shape(text):
         if v >= ARABIC_SLOT_BASE:
             out.append(v)
             i -= 1
+        elif is_bidi_separator(v):
+            out.append(v)
+            i -= 1
         else:
             j = i
-            while j >= 0 and logical[j][1] < ARABIC_SLOT_BASE:
+            while (j >= 0 and logical[j][1] < ARABIC_SLOT_BASE and
+                   not is_bidi_separator(logical[j][1])):
                 j -= 1
             out.extend(e[1] for e in logical[j + 1:i + 1])
             i = j
@@ -399,12 +415,8 @@ def _dense_joins(kv_true_cps, size=0x064B):
 
 
 def emit_map_header(path):
-    seen, rows = set(), []
-    for f in sorted(FORMS, key=lambda x: x.cp):
-        if f.cp in seen:
-            continue
-        seen.add(f.cp)
-        rows.append(f"{{0x{f.cp:04X},0x{f.slot:02X}}}")
+    rows = [f"{{0x{cp:04X},0x{slot:02X}}}"
+            for cp, slot in sorted(CP_TO_SLOT.items())]
     body_rows = ""
     for off in range(0, len(rows), 8):
         body_rows += "    " + ", ".join(rows[off:off + 8]) + ",\n"
@@ -417,12 +429,10 @@ def emit_map_header(path):
     for ltr in LETTERS:
         row = [0, 0, 0, 0]
         for tag, cp in ltr[3]:
+            if tag in ("INI", "MED") and ltr[2] != "DUAL":
+                continue
             idx = {"ISO": 0, "INI": 1, "MED": 2, "FIN": 3}[tag]
-            row[idx] = CP_TO_SLOT[cp]
-        # dedup rows for duplicate-cp letters (teh_marbuta): keep first hit
-        for i in (1, 2):
-            if row[i] == row[3] and i:
-                row[i] = row[3]
+            row[idx] = FORM_SLOT_BY_LETTER_TAG[(ltr[0], tag)]
         fb[ltr[1]] = row
     fb_rows = ",\n".join(
         "    {0x%04X,{%d,%d,%d,%d}}" % (cp, *row) for cp, row in sorted(fb.items()))
@@ -459,8 +469,8 @@ namespace ArabicMap {{
 
 struct CpSlot {{ uint16_t cp; uint8_t slot; }};
 
-// sorted ascending by cp ({len(seen)} unique entries) - binary searchable
-static const CpSlot MAP[{len(seen)}] PROGMEM = {{
+// sorted ascending by cp ({len(rows)} unique entries) - binary searchable
+static const CpSlot MAP[{len(rows)}] PROGMEM = {{
 {body_rows}}};
 
 static const uint8_t JOINS_RIGHT[0x064B] PROGMEM = {{
@@ -501,7 +511,7 @@ inline uint8_t joinsLeft(uint16_t cp) {{
     return cp < 0x064B ? pgm_read_byte(&JOINS_LEFT[cp]) : 0;
 }}
 inline bool lookupSlot(uint16_t cp, uint8_t &slot) {{
-    int lo = 0, hi = {len(seen)} - 1;
+    int lo = 0, hi = {len(rows)} - 1;
     while (lo <= hi) {{
         int mid = (lo + hi) >> 1;
         uint16_t c = pgm_read_word(&MAP[mid].cp);

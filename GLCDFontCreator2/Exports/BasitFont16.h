@@ -11,7 +11,7 @@
  * me@apetech.de
  *
  * File Name           : BasitFont16.h
- * Date                : 15.10.2026
+ * Date                : 17.10.2026
  * Font size in bytes  : 35318
  * Font width          : 10
  * Font height         : 16

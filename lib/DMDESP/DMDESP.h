@@ -46,6 +46,12 @@ hasilnya ke PUBLIK (GNU General Public License).
 
 #include "Bitmap.h"
 #include <SPI.h>
+#if DMDESP_SDK_TIMER_SCAN
+extern "C" {
+#include <os_type.h>
+#include <osapi.h>
+}
+#endif
 
 class DMDESP : public Bitmap {
 public:
@@ -80,6 +86,12 @@ private:
   uint8_t *fb1;
   uint8_t *displayfb;
   unsigned long lastRefresh;
+#if DMDESP_SDK_TIMER_SCAN
+  os_timer_t scanTimer = {};
+  bool timerArmed = false;
+  bool driverStarted = false;
+  static void scanTimerCallback(void *arg);
+#endif
 };
 
 #endif

@@ -13,7 +13,6 @@ struct DisplayProfile
   uint8_t smallAreaH;
   uint16_t clockAreaWidth;
   uint16_t infoStart;
-  uint8_t edgeMargin;
   uint8_t topLineHeight;
   bool hasTopInfo;
 
@@ -30,11 +29,8 @@ inline constexpr DisplayProfile DISPLAY_PROFILE = {
     uint8_t(DISPLAYS_HIGH * 16 >= 16 ? 8 : 0),
     uint8_t(DISPLAYS_HIGH * 16 >= 16 ? 8 : 0),
     uint8_t(DISPLAYS_HIGH * 16 >= 16 ? 8 : DISPLAYS_HIGH * 16),
-    uint16_t(DISPLAYS_WIDE * 32 >= 96 ? (DISPLAYS_WIDE * 32) / 2
-                                      : DISPLAYS_WIDE * 32),
-    uint16_t(DISPLAYS_WIDE * 32 >= 96 ? (DISPLAYS_WIDE * 32) / 2
-                                      : DISPLAYS_WIDE * 32),
-    4,
+    uint16_t(DISPLAYS_WIDE * 32 >= 96 ? 64 : DISPLAYS_WIDE * 32),
+    uint16_t(DISPLAYS_WIDE * 32 >= 96 ? 64 : DISPLAYS_WIDE * 32),
     8,
     DISPLAYS_WIDE * 32 >= 96};
 

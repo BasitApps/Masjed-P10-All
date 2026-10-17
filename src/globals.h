@@ -123,7 +123,7 @@ struct Configuration {
            memchr(message, '\0', sizeof(message)) != nullptr &&
            memchr(apPassword, '\0', sizeof(apPassword)) != nullptr &&
            strlen(apPassword) >= 8 && strlen(apPassword) <= 63 &&
-             mustChangePassword <= 1 && fontFamily <= 2 && digitStyle <= 1;
+             mustChangePassword <= 1 && fontFamily <= 1 && digitStyle <= 1;
   }
 
   bool migrateCityId()

@@ -28,6 +28,10 @@ def harden(source):
     String plainBuf;""")
     replace("  _currentArgs = new RequestArgument[_currentArgCount + 1];", """  _currentArgs = new (std::nothrow) RequestArgument[_currentArgCount + 1];
   if (!_currentArgs) { _currentArgCount = 0; return; }""")
+    if source.count("    _parseArguments(searchStr);") != 2:
+        raise RuntimeError("ESP8266 request argument call sites changed")
+    source = source.replace("    _parseArguments(searchStr);", """    _parseArguments(searchStr);
+    if (!_currentArgs) return CLIENT_MUST_STOP;""")
     start = source.index("bool ESP8266WebServerTemplate<ServerType>::_parseForm(")
     end = source.index("template <typename ServerType>\nString", start)
     form = source[start:end]
@@ -64,8 +68,9 @@ def harden(source):
     form = form.replace("            RequestArgument& arg = _postArgs[_postArgsLen++];", """            if (_postArgsLen >= WEBSERVER_MAX_POST_ARGS) return _parseFormUploadAborted();
             retainedBytes += argName.length() + argValue.length();
             RequestArgument& arg = _postArgs[_postArgsLen++];""", 1)
-    form = form.replace("            _currentUpload.reset(new HTTPUpload());", """            _currentUpload.reset(new (std::nothrow) HTTPUpload());
-            if (!_currentUpload) return _parseFormUploadAborted();""", 1)
+    form = form.replace("            _currentUpload.reset(new HTTPUpload());", """            HTTPUpload* nextUpload = new (std::nothrow) HTTPUpload();
+            if (!nextUpload) return _parseFormUploadAborted();
+            _currentUpload.reset(nextUpload);""", 1)
     form = form.replace("            while ( true ) {", """            while ( true ) {
                 if (millis() - started >= 120000UL)
                     return _parseFormUploadAborted();""", 1)

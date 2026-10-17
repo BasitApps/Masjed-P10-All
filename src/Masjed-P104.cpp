@@ -1,4 +1,5 @@
 #include "SmartText.h"
+#include "TextSpacing.h"
 #include "ArabicShaper.h"
 #include "TimeMath.h"
 #include "CardScheduler.h"
@@ -12,6 +13,7 @@
 #include <Arduino.h>
 #include <DMDESP.h>
 #include <LittleFS.h>
+#include "ClockStorageContract.h"
 #include <BasitWebServer.h>
 #include <ESP8266WebServer.h> // Keep PlatformIO dependency discovery; header guard skips stock parsing.
 #ifndef BASIT_WEBSERVER_HARDENED
@@ -25,12 +27,15 @@
 #include <Updater.h>
 #include <fonts/BasitFont16.h>
 #include <fonts/BasitFont7.h>
-#include <fonts/Tahoma16.h>
+#include <fonts/TahomaBold16.h>
 #include <fonts/Tahoma7.h>
 #include <fonts/BasitFont7Indic.h>
 #include <fonts/BasitFont16Indic.h>
 #include <fonts/Tahoma7Indic.h>
-#include <fonts/Tahoma16Indic.h>
+#include <fonts/TahomaBold16Indic.h>
+#if defined(P10_SMALL8_TEST) && P10_SMALL8_TEST
+#include <fonts/TahomaP10_8_Trial.h>
+#endif
 
 // PrayerTimes.cpp defines these setters but its legacy header omits them.
 void set_maghrib_minutes(double minutes);
@@ -46,6 +51,75 @@ static bool displayFrameDirty = true;
 static bool displayReady = false;
 static uint32_t displayRevision = 0;
 static bool sleepingFrameShown = false;
+static unsigned long splashStartedMs = 0;
+static SmartText splashTopText(dmd, DISPLAY_PROFILE.width);
+static SmartText splashBottomText(dmd, DISPLAY_PROFILE.width);
+static char splashCompany[48] = {0};
+static char splashPhone[16] = {0};
+static bool narrowSplashReady = false;
+static bool narrowErrorFontForced = false;
+#if DEBUG
+static bool debugWifiDisabled = false;
+#endif
+
+#if DMDESP_SCAN_DIAGNOSTICS
+struct ScanDiagnostics {
+  uint32_t lastLatchUs = 0, count = 0, gapCount = 0, gapSumUs = 0;
+  uint32_t gapMinUs = UINT32_MAX, gapMaxUs = 0, over5ms = 0, scanMaxUs = 0;
+  uint32_t stageMaxUs[4] = {};
+  uint32_t apiMaxUs = 0, sendMaxUs = 0, storeMaxUs = 0;
+  const char *apiPath = "none";
+  bool haveLatch = false;
+};
+static ScanDiagnostics scanDiag;
+static uint32_t scanStageStartedUs = 0;
+
+void resetDmdScanGap() { scanDiag.haveLatch = false; }
+
+void recordDmdScan(uint32_t latchUs, uint32_t durationUs)
+{
+  ++scanDiag.count;
+  if (durationUs > scanDiag.scanMaxUs) scanDiag.scanMaxUs = durationUs;
+  if (scanDiag.haveLatch) {
+    const uint32_t gapUs = latchUs - scanDiag.lastLatchUs;
+    ++scanDiag.gapCount;
+    scanDiag.gapSumUs += gapUs;
+    if (gapUs < scanDiag.gapMinUs) scanDiag.gapMinUs = gapUs;
+    if (gapUs > scanDiag.gapMaxUs) scanDiag.gapMaxUs = gapUs;
+    if (gapUs > 5000UL) ++scanDiag.over5ms;
+  }
+  scanDiag.lastLatchUs = latchUs;
+  scanDiag.haveLatch = true;
+}
+
+static void finishScanStage(uint8_t stage)
+{
+  const uint32_t nowUs = micros();
+  const uint32_t elapsedUs = nowUs - scanStageStartedUs;
+  if (elapsedUs > scanDiag.stageMaxUs[stage]) scanDiag.stageMaxUs[stage] = elapsedUs;
+  scanStageStartedUs = nowUs;
+}
+
+static void reportScanDiagnostics(unsigned long now)
+{
+  static unsigned long lastReport = 0;
+  if (now - lastReport < 10000UL) return;
+  lastReport = now;
+  Serial.printf("SCAN wifi=%u peers=%u n=%lu gapMin=%lu gapAvg=%lu gapMax=%lu over5ms=%lu scanMax=%lu serviceMax=%lu yieldMax=%lu httpMax=%lu renderMax=%lu apiMax=%lu sendMax=%lu storeMax=%lu path=%s us\n",
+                unsigned(WiFi.getMode()), unsigned(WiFi.softAPgetStationNum()),
+                (unsigned long)scanDiag.count,
+                (unsigned long)(scanDiag.gapCount ? scanDiag.gapMinUs : 0),
+                (unsigned long)(scanDiag.gapCount ? scanDiag.gapSumUs / scanDiag.gapCount : 0),
+                (unsigned long)scanDiag.gapMaxUs, (unsigned long)scanDiag.over5ms,
+                (unsigned long)scanDiag.scanMaxUs, (unsigned long)scanDiag.stageMaxUs[0],
+                (unsigned long)scanDiag.stageMaxUs[1], (unsigned long)scanDiag.stageMaxUs[2],
+                (unsigned long)scanDiag.stageMaxUs[3], (unsigned long)scanDiag.apiMaxUs,
+                (unsigned long)scanDiag.sendMaxUs, (unsigned long)scanDiag.storeMaxUs,
+                scanDiag.apiPath);
+  // Exclude the diagnostic Serial print's own pause from the next scan interval.
+  scanDiag = ScanDiagnostics{};
+}
+#endif
 
 static uint16_t cardEnabledMask = (uint16_t(1) << CARD_COUNT) - 1;
 static uint8_t cardOrder[CARD_COUNT] = {0, 1, 2, 3, 4, 5,
@@ -128,6 +202,7 @@ inline void sleeping()
     return;
   clearDisplay();
   dmd.setPixel(0, 0, Bitmap::White);
+  dmd.setPixel(1, 0, Bitmap::White);
   markDisplayDirty();
   sleepingFrameShown = true;
 }
@@ -215,7 +290,8 @@ bool readPersistedState(const char *path, PersistedState &state)
   file.close();
   if (!ok || state.crc != persistedStateCrc(state))
     return false;
-  if (state.config.migrateCityId())
+  const bool cityMigrated = state.config.migrateCityId();
+  if (ClockSettings::migrateEqama(state.config) || cityMigrated)
     state.crc = persistedStateCrc(state);
   return validPersistedState(state);
 }
@@ -251,7 +327,7 @@ bool saveStorage(Stage stage)
   // same byte-for-byte payload already committed.
   const size_t payloadOffset = offsetof(PersistedState, config);
   const size_t payloadSize = offsetof(PersistedState, crc) - payloadOffset;
-  if (memcmp(reinterpret_cast<const uint8_t *>(&stagedState) + payloadOffset,
+  if (persistedSequence && memcmp(reinterpret_cast<const uint8_t *>(&stagedState) + payloadOffset,
              reinterpret_cast<const uint8_t *>(&persistedState) + payloadOffset,
              payloadSize) == 0)
     return true;
@@ -261,23 +337,36 @@ bool saveStorage(Stage stage)
   stagedState.sequence = persistedSequence + 1;
   stagedState.reserved = 0;
   stagedState.crc = persistedStateCrc(stagedState);
+  if (!validPersistedState(stagedState)) return false;
   const uint8_t targetSlot = uint8_t(1 - persistedSlot);
   const char *target = targetSlot == 0 ? CONFIG_STORE_A : CONFIG_STORE_B;
-  if (!writePersistedState(target, stagedState)) return false;
+#if DMDESP_SCAN_DIAGNOSTICS
+  const uint32_t storeStartedUs = micros();
+#endif
+  const bool writeOk = writePersistedState(target, stagedState);
+#if DMDESP_SCAN_DIAGNOSTICS
+  const uint32_t storeUs = micros() - storeStartedUs;
+  if (storeUs > scanDiag.storeMaxUs) scanDiag.storeMaxUs = storeUs;
+#endif
+  if (!writeOk) return false;
   persistedState = stagedState;
   persistedSequence = stagedState.sequence;
   persistedSlot = targetSlot;
   return true;
 }
 
+constexpr uint8_t MIN_POWER_SAVE_BRIGHTNESS = 1;
+
 void stagePowerPrefs(uint8_t brightness)
 {
-  stagedState.powerSaveBrightness = brightness;
+  stagedState.powerSaveBrightness = brightness < MIN_POWER_SAVE_BRIGHTNESS
+                                        ? MIN_POWER_SAVE_BRIGHTNESS : brightness;
 }
 
 bool loadPowerPrefs()
 {
-  powerSaveBrightness = persistedState.powerSaveBrightness;
+  powerSaveBrightness = persistedState.powerSaveBrightness < MIN_POWER_SAVE_BRIGHTNESS
+                             ? MIN_POWER_SAVE_BRIGHTNESS : persistedState.powerSaveBrightness;
   return true;
 }
 
@@ -336,7 +425,8 @@ bool loadConfig()
   config = persistedState.config;
   makkahIshaMode = persistedState.makkahIshaMode;
   ultraPowerSave = persistedState.ultraPowerSave != 0;
-  powerSaveBrightness = persistedState.powerSaveBrightness;
+  powerSaveBrightness = persistedState.powerSaveBrightness < MIN_POWER_SAVE_BRIGHTNESS
+                             ? MIN_POWER_SAVE_BRIGHTNESS : persistedState.powerSaveBrightness;
   cardEnabledMask = persistedState.enabledMask;
   memcpy(cardOrder, persistedState.order, sizeof(cardOrder));
   return true;
@@ -678,16 +768,6 @@ void restoreCardAfterPriority()
   }
 }
 
-static inline bool englishLetter(unsigned char c)
-{
-  return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
-}
-
-static inline bool asciiDigit(unsigned char c)
-{
-  return c >= '0' && c <= '9';
-}
-
 static int16_t displayTextWidth(const char *text)
 {
   int16_t width = dmd.textWidth(text);
@@ -695,34 +775,97 @@ static int16_t displayTextWidth(const char *text)
   {
     const unsigned char previous = static_cast<unsigned char>(text[i - 1]);
     const unsigned char current = static_cast<unsigned char>(text[i]);
-    const bool gap = config.language == LANG_EN
-                         ? englishLetter(previous) && englishLetter(current)
-                         : asciiDigit(previous) && asciiDigit(current);
-    if (gap)
+    if (needsTextGap(previous, current))
       ++width;
   }
   return width;
 }
 
-static void drawDisplayText(int16_t x, int8_t y, const char *text)
+static void drawDisplayText(int16_t x, int8_t y, const char *text,
+                            Bitmap &target = dmd)
 {
   for (size_t i = 0; text[i]; ++i)
   {
-    int charWidth = dmd.drawChar(x, y, text[i]);
+    int charWidth = target.drawChar(x, y, text[i]);
     if (charWidth <= 0)
       charWidth = 1;
     x += charWidth;
     const unsigned char current = static_cast<unsigned char>(text[i]);
     const unsigned char next = static_cast<unsigned char>(text[i + 1]);
-    const bool gap = config.language == LANG_EN
-                         ? englishLetter(current) && englishLetter(next)
-                         : asciiDigit(current) && asciiDigit(next);
-    if (next && gap)
+    if (needsTextGap(current, next))
     {
-      dmd.drawFilledRect(x, y, x, y + dmd.textHeight() - 1, Bitmap::Black);
+      target.drawFilledRect(x, y, x, y + target.textHeight() - 1, Bitmap::Black);
       ++x;
     }
   }
+}
+
+static int8_t topFontY()
+{
+  static const uint8_t *cachedFont = nullptr;
+  static int8_t y = 0;
+  const uint8_t *font = static_cast<const uint8_t *>(dmd.font());
+  if (font != cachedFont)
+  {
+    cachedFont = font;
+    y = 0;
+    if (!font || pgm_read_byte(font + 3) > 8)
+      return y;
+    const uint8_t count = pgm_read_byte(font + 5);
+    const bool fixed = !pgm_read_byte(font) && !pgm_read_byte(font + 1);
+    uint16_t bytes = fixed ? count * pgm_read_byte(font + 2) : 0;
+    if (!fixed)
+      for (uint16_t i = 0; i < count; ++i)
+        bytes += pgm_read_byte(font + 6 + i);
+    const uint8_t *glyphs = font + 6 + (fixed ? 0 : count);
+    uint8_t rows = 0;
+    for (uint16_t i = 0; i < bytes; ++i)
+      rows |= pgm_read_byte(glyphs + i);
+    // Remove only the font's globally blank leading rows, preserving its artwork.
+    while (rows && !(rows & 1))
+    {
+      --y;
+      rows >>= 1;
+    }
+  }
+  return y;
+}
+
+static void drawTopText(int16_t start, int16_t width, const char *text,
+                        bool alignRight)
+{
+  static Bitmap line(DISPLAY_PROFILE.width, DISPLAY_PROFILE.topLineHeight);
+  if (!line.isValid())
+    return;
+  line.setFont(dmd.font());
+  line.setTextColor(dmd.textColor());
+  line.clear();
+  const int16_t textWidth = displayTextWidth(text);
+  drawDisplayText(alignRight ? width - 1 - textWidth : 0,
+                  topFontY(), text, line);
+  int16_t firstInk = width, lastInk = -1;
+  for (int16_t x = 0; x < width; ++x)
+  {
+    bool lit = false;
+    for (uint8_t row = 0; row < DISPLAY_PROFILE.topLineHeight; ++row)
+      lit |= line.pixel(x, row) == Bitmap::White;
+    if (!lit)
+      continue;
+    firstInk = min(firstInk, x);
+    lastInk = x;
+  }
+  dmd.fill(start, 0, width, DISPLAY_PROFILE.topLineHeight, Bitmap::Black);
+  if (lastInk >= firstInk)
+  {
+    const int16_t inkWidth = min(int16_t(width - 1),
+                                 int16_t(lastInk - firstInk + 1));
+    const int16_t sourceX = alignRight ? lastInk - inkWidth + 1 : firstInk;
+    const int16_t targetX = alignRight ? width - 1 - inkWidth : 1;
+    // One outer pixel of margin; copying cannot cross this zone's boundaries.
+    line.copy(sourceX, 0, inkWidth, DISPLAY_PROFILE.topLineHeight,
+              &dmd, start + targetX, 0);
+  }
+  markDisplayDirty();
 }
 
 void drawTopClock()
@@ -766,14 +909,7 @@ void drawTopClock()
     p += 2;
   }
   *p = '\0';
-  const int16_t textWidth = displayTextWidth(fmtBuf);
-  int16_t x = (clockArea - textWidth) / 2;
-  if (x < 0)
-    x = 0;
-  dmd.drawFilledRect(0, 0, clockArea - 1,
-                     DISPLAY_PROFILE.topLineHeight - 1, Bitmap::Black);
-  drawDisplayText(x, 0, fmtBuf);
-  markDisplayDirty();
+  drawTopText(0, clockArea, fmtBuf, false);
 }
 void drawTopInfo()
 {
@@ -848,9 +984,7 @@ void drawTopInfo()
   // full month, then the compact month when space runs out.
   if ((sec5 & 3) == 2 && timeData.hMonth >= 1 && timeData.hMonth <= 12)
   {
-    const int16_t infoWidth = DISPLAY_PROFILE.width -
-                               DISPLAY_PROFILE.infoStart -
-                               DISPLAY_PROFILE.edgeMargin;
+    const int16_t infoWidth = DISPLAY_PROFILE.width - DISPLAY_PROFILE.infoStart - 1;
     ArabicShaper::shape(fmtBuf, shapedText, sizeof(shapedText));
     cachedWidth = displayTextWidth(shapedText);
     if (cachedWidth > infoWidth)
@@ -885,20 +1019,39 @@ void drawTopInfo()
       }
     }
   }
+  ArabicShaper::shape(fmtBuf, shapedText, sizeof(shapedText));
+  const int16_t infoWidth = DISPLAY_PROFILE.width - DISPLAY_PROFILE.infoStart - 1;
+  if (displayTextWidth(shapedText) > infoWidth)
+  {
+    switch (sec5 & 3)
+    {
+    case 0:
+      if (config.language == LANG_EN)
+        fmtBuf[3] = '\0';
+      else
+        memmove(fmtBuf, fmtBuf + 4, strlen(fmtBuf + 4) + 1); // Omit the weekday's "ال".
+      break;
+    case 1:
+      snprintf(fmtBuf, sizeof(fmtBuf), "%02d/%02d/%02d", timeData.day,
+               timeData.month, timeData.year % 100);
+      ArabicShaper::shape(fmtBuf, shapedText, sizeof(shapedText));
+      if (displayTextWidth(shapedText) > infoWidth)
+        snprintf(fmtBuf, sizeof(fmtBuf), "%02d/%02d", timeData.day, timeData.month);
+      break;
+    case 2:
+      snprintf(fmtBuf, sizeof(fmtBuf), "%d/%d", timeData.hDay, timeData.hMonth);
+      break;
+    case 3:
+      safeCopy(fmtBuf, config.language == LANG_EN ? "Silent" : "صامت",
+               sizeof(fmtBuf));
+      break;
+    }
+  }
   if (strcmp(cachedText, fmtBuf) != 0)
   {
     safeCopy(cachedText, fmtBuf, sizeof(cachedText));
     ArabicShaper::shape(fmtBuf, shapedText, sizeof(shapedText));
-    cachedWidth = displayTextWidth(shapedText);
-    const int16_t infoStart = DISPLAY_PROFILE.infoStart;
-    int16_t x = DISPLAY_PROFILE.width - cachedWidth - DISPLAY_PROFILE.edgeMargin;
-    if (x < infoStart)
-      x = infoStart;
-    dmd.drawFilledRect(infoStart, 0, DISPLAY_PROFILE.width - 1,
-                       DISPLAY_PROFILE.topLineHeight - 1,
-                       Bitmap::Black);
-    drawDisplayText(x, 0, shapedText);
-    markDisplayDirty();
+    drawTopText(DISPLAY_PROFILE.infoStart, infoWidth + 1, shapedText, true);
   }
 }
 void drawTopLine()
@@ -912,24 +1065,32 @@ void displayText(const char *text1, const char *text2 = nullptr,
                  bool flash = false, bool autoNext = true,
                  unsigned long now = 0)
 {
-  static int8_t lastAlt5 = -1;
+  static bool wasAlternating = false;
   static bool showFirst = true;
+  static bool advanceAlternate = false;
+  static uint32_t alternateStartedMs = 0;
+  static uint32_t lastRevision = UINT32_MAX;
 
   if (dispParams.isSmall)
     drawTopLine();
 
-  const char *text = text1;
-  if (!dispParams.isSmall && text2)
+  const bool alternating = !dispParams.isSmall && text2 && text2[0];
+  if (!alternating || !wasAlternating || lastRevision != displayRevision)
   {
-    int8_t sec5 = (now / 1000) / 5;
-    if (sec5 != lastAlt5)
-    {
-      lastAlt5 = sec5;
-      showFirst = !showFirst;
-      smartText.reset();
-    }
-    text = showFirst ? text1 : text2;
+    showFirst = true;
+    advanceAlternate = false;
+    alternateStartedMs = now;
   }
+  else if (advanceAlternate)
+  {
+    showFirst = !showFirst;
+    advanceAlternate = false;
+    alternateStartedMs = now;
+    smartText.reset();
+  }
+  wasAlternating = alternating;
+  lastRevision = displayRevision;
+  const char *text = alternating && !showFirst ? text2 : text1;
 
   smartText.setArea(dispParams.areaY, dispParams.areaH);
   smartText.setSpeed(dispState.scrollSpeed);
@@ -940,7 +1101,15 @@ void displayText(const char *text1, const char *text2 = nullptr,
   if (smartText.consumeDirty())
     markDisplayDirty();
 
-  if (autoNext &&
+  if (alternating)
+  {
+    // Moving text owns a complete pass; fitting text keeps a five-second hold.
+    if (smartText.isStatic()
+            ? uint32_t(now - alternateStartedMs) >= MS_CARD_DURATION
+            : done)
+      advanceAlternate = true;
+  }
+  else if (autoNext &&
       (done || (smartText.isStatic() &&
                 static_cast<int32_t>(now - dispState.cardTimer) >= 0)))
     nextCard();
@@ -984,8 +1153,8 @@ void checkPrayers(unsigned long now, int16_t nowMins)
       dispState.setStopCards(true);
       uint8_t h, m;
       minToHM(pt, h, m);
-      snprintf(dispState.runText, sizeof(dispState.runText), "%d:%02d  %s",
-               CivilTime::displayHour(h, config.hour24), m, prayerNameBuf);
+      snprintf(dispState.runText, sizeof(dispState.runText), "%s %d:%02d",
+               prayerNameBuf, CivilTime::displayHour(h, config.hour24), m);
       snprintf(dispState.tempBuf, sizeof(dispState.tempBuf), "%d : %02d : %02d",
                CivilTime::displayHour(timeData.hour, config.hour24), timeData.min, timeData.sec);
       displayText(dispState.runText, dispState.tempBuf, false, false, now);
@@ -1004,10 +1173,18 @@ void checkPrayers(unsigned long now, int16_t nowMins)
         if (i == 2 && friday)
           safeCopyP(prayerNameBuf, english ? MSG_JUMAA_EN : MSG_JUMAA,
                     sizeof(prayerNameBuf));
-        snprintf_P(dispState.runText, sizeof(dispState.runText),
-                   english ? MSG_AZAN_EN : MSG_AZAN,
-                   prayerNameBuf);
-        displayText(dispState.runText, nullptr, true, false, now);
+        if (DISPLAY_PROFILE.width <= 32)
+        {
+          // The 1x1 width cannot show the extra "Adhan/أذان" label.
+          displayText(prayerNameBuf, nullptr, true, false, now);
+        }
+        else
+        {
+          snprintf_P(dispState.runText, sizeof(dispState.runText),
+                     english ? MSG_AZAN_EN : MSG_AZAN,
+                     prayerNameBuf);
+          displayText(dispState.runText, nullptr, true, false, now);
+        }
       }
       return;
     }
@@ -1022,10 +1199,16 @@ void checkPrayers(unsigned long now, int16_t nowMins)
     if (phase == PrayerPhase::EqamaCountdown)
     {
       dispState.setStopCards(true);
+      const bool compactEqamaText = DISPLAY_PROFILE.width == 64;
       snprintf_P(dispState.runText, sizeof(dispState.runText),
-                 english ? MSG_EQAMA_IN_EN : MSG_EQAMA_IN,
+                 english ? (compactEqamaText ? MSG_EQAMA_IN_2X1_EN
+                                             : (dispParams.isSmall ? MSG_EQAMA_IN_EN
+                                                                    : MSG_EQAMA_IN_LARGE_EN))
+                         : (compactEqamaText ? MSG_EQAMA_IN_2X1
+                                             : (dispParams.isSmall ? MSG_EQAMA_IN
+                                                                    : MSG_EQAMA_IN_LARGE)),
                  forwardMinuteDistance(nowMins, pt + eq));
-      safeCopyP(dispState.tempBuf, english ? MSG_EQAMA_EN : MSG_EQAMA,
+      safeCopyP(dispState.tempBuf, english ? MSG_PHONE_SILENT_EN : MSG_PHONE_SILENT_AR,
                 sizeof(dispState.tempBuf));
       displayText(dispState.runText, dispState.tempBuf, false, false, now);
       return;
@@ -1033,9 +1216,13 @@ void checkPrayers(unsigned long now, int16_t nowMins)
     if (phase == PrayerPhase::EqamaSeconds)
     {
       dispState.setStopCards(true);
-      if (DISPLAY_PROFILE.narrow())
+      if (DISPLAY_PROFILE.width <= 32)
         snprintf(dispState.runText, sizeof(dispState.runText), "%02d",
                  60 - timeData.sec);
+      else if (DISPLAY_PROFILE.width == 64)
+        snprintf_P(dispState.runText, sizeof(dispState.runText),
+                   english ? MSG_EQAMA_SEC_2X1_EN : MSG_EQAMA_SEC_2X1,
+                   60 - timeData.sec);
       else
         snprintf_P(dispState.runText, sizeof(dispState.runText),
                    english ? MSG_EQAMA_SEC_EN : MSG_EQAMA_SEC,
@@ -1060,6 +1247,14 @@ void checkPrayers(unsigned long now, int16_t nowMins)
     if (phase == PrayerPhase::Azkar)
     {
       dispState.setStopCards(true);
+      if (dispParams.isSmall)
+      {
+        safeCopyP(dispState.runText,
+                  english ? AZKAR_AFTER_SMALL_EN : AZKAR_AFTER_SMALL,
+                  sizeof(dispState.runText));
+        displayText(dispState.runText, nullptr, false, false, now);
+        return;
+      }
       safeCopyP(dispState.runText,
                 english ? AZKAR_AFTER_EN : AZKAR_AFTER,
                 sizeof(dispState.runText));
@@ -1261,11 +1456,16 @@ void cardClock()
   *p++ = ' ';
   int2str2(p, timeData.min);
   p += 2;
-  *p++ = ' ';
-  *p++ = ':';
-  *p++ = ' ';
-  int2str2(p, timeData.sec);
-  p += 2;
+  // On 1x1/2x1 large-font layouts the clock scrolls. Seconds change every
+  // second and would restart that scroll before it can reach the end.
+  if (!DISPLAY_PROFILE.narrow())
+  {
+    *p++ = ' ';
+    *p++ = ':';
+    *p++ = ' ';
+    int2str2(p, timeData.sec);
+    p += 2;
+  }
   *p = '\0';
   displayText(dispState.runText, nullptr, false, true, millis());
 }
@@ -1277,6 +1477,7 @@ void cardPrayers()
     // Logical order is Fajr -> Sunrise -> Dhuhr -> Asr -> Maghrib -> Isha.
     // ArabicShaper performs the visual RTL reversal, so this puts Fajr at
     // the right edge and Isha at the left edge on the physical panel.
+    uint8_t prayerItem = 0;
     for (uint8_t i : PrayerIndex::EventIndices)
     {
       // Name first in logical text makes the visual RTL order "name time".
@@ -1299,10 +1500,17 @@ void cardPrayers()
         int2str2(p, m);
         p += 2;
       }
-      *p++ = ' ';
-      *p++ = ' ';
-      *p++ = ' ';
+      // Add a space between each prayer item, except the last one.
+      if (++prayerItem < sizeof(PrayerIndex::EventIndices))
+      {
+        *p++ = ' ';
+        *p++ = ' ';
+      }
     }
+    *p++ = ' ';
+    *p++ = ' ';
+    *p++ = ' ';
+    *p++ = ' ';
     *p = '\0';
     dispState.setFirstShow(false);
     dispState.cardTimer = millis() + MS_CARD_DURATION;
@@ -1351,6 +1559,9 @@ void initAP()
 
 void serviceWiFi(unsigned long now)
 {
+#if DEBUG
+  if (debugWifiDisabled) return;
+#endif
   static unsigned long lastCheck = 0;
   if (now - lastCheck < 60000UL)
     return;
@@ -1402,8 +1613,15 @@ int findV2Value(const char *key, char *out, size_t outSize)
 
 void sendV2(int status, const char *body)
 {
+#if DMDESP_SCAN_DIAGNOSTICS
+  const uint32_t sendStartedUs = micros();
+#endif
+  // Waiting for a TCP ACK here stalls the foreground matrix refresh.
   server.send(status, "text/plain; charset=utf-8", body);
-  server.client().flush();
+#if DMDESP_SCAN_DIAGNOSTICS
+  const uint32_t sendUs = micros() - sendStartedUs;
+  if (sendUs > scanDiag.sendMaxUs) scanDiag.sendMaxUs = sendUs;
+#endif
 }
 
 void sendV2Error(int status, const char *code)
@@ -1550,14 +1768,13 @@ void applySettings()
   const uint8_t *largeFont = BasitFont16;
   if (config.fontFamily == 1)
   {
-    smallFont = Tahoma7;
-    largeFont = Tahoma16;
+    largeFont = TahomaBold16;
   }
   dmd.setFont(dispParams.isSmall ? smallFont : largeFont);
   if (config.digitStyle == 1)
   {
-    smallFont = config.fontFamily == 1 ? Tahoma7Indic : BasitFont7Indic;
-    largeFont = config.fontFamily == 1 ? Tahoma16Indic : BasitFont16Indic;
+    smallFont = BasitFont7Indic;
+    largeFont = config.fontFamily == 1 ? TahomaBold16Indic : BasitFont16Indic;
     dmd.setFont(dispParams.isSmall ? smallFont : largeFont);
   }
   dmd.setBrightness(effectiveBrightness());
@@ -1605,7 +1822,8 @@ bool installSettings(const Configuration &next, uint8_t nextMakkahIshaMode,
   config = next;
   makkahIshaMode = nextMakkahIshaMode;
   ultraPowerSave = nextUltraPowerSave;
-  powerSaveBrightness = nextPowerSaveBrightness;
+  powerSaveBrightness = nextPowerSaveBrightness < MIN_POWER_SAVE_BRIGHTNESS
+                             ? MIN_POWER_SAVE_BRIGHTNESS : nextPowerSaveBrightness;
   return true;
 }
 
@@ -1701,16 +1919,19 @@ uint8_t effectiveBrightness()
   if (ultraPowerSaveActive())
     return 1;
   const bool powerSave = powerSaveWindowActive();
-  return powerSave ? powerSaveBrightness : config.brightness;
+  return powerSave ? (powerSaveBrightness < MIN_POWER_SAVE_BRIGHTNESS
+                          ? MIN_POWER_SAVE_BRIGHTNESS : powerSaveBrightness)
+                   : config.brightness;
 }
 
 void handleNotFound() { server.send(404, "text/plain", "404"); }
 void handleRoot() { server.send(200, "text/plain", "Basit"); }
 void handleCheckUpdate()
 {
-  // Keep the advertised API version aligned with the Android firmware map.
-  // Earlier P104 images report 11 and will therefore be offered this update.
-  server.send(200, "text/plain", "update,P,104,12,good");
+  char reply[48];
+  snprintf(reply, sizeof(reply), "update,P,%s,%u,good", DEVICE_MODEL,
+           unsigned(DEVICE_VERSION));
+  server.send(200, "text/plain", reply);
 }
 void handleTestMode()
 {
@@ -1747,6 +1968,7 @@ bool appendV2Field(char *body, size_t bodySize, const char *key,
 
 void handleGetData()
 {
+  if (!persistedSequence) { sendV2Error(500, "storage"); return; }
   static char buf[384], out[1152]; // Worst escaped response measured below 1.1KB.
   char nightBrightnessText[5];
   snprintf(nightBrightnessText, sizeof(nightBrightnessText), "%u",
@@ -1911,12 +2133,12 @@ void handleSetDateTime()
 void handleSetEqama()
 {
   Configuration next = config;
-  if (!readIntArg("f", next.eqamaFajr, 0, 120) ||
-      !readIntArg("s", next.eqamaShrouq, 0, 120) ||
-      !readIntArg("z", next.eqamaZohr, 0, 120) ||
-      !readIntArg("a", next.eqamaAsr, 0, 120) ||
-      !readIntArg("m", next.eqamaMaghrib, 0, 120) ||
-      !readIntArg("e", next.eqamaEsha, 0, 120))
+  if (!readIntArg("f", next.eqamaFajr, 0, ClockSettings::MAX_EQAMA) ||
+      !readIntArg("s", next.eqamaShrouq, 0, ClockSettings::MAX_EQAMA) ||
+      !readIntArg("z", next.eqamaZohr, 0, ClockSettings::MAX_EQAMA) ||
+      !readIntArg("a", next.eqamaAsr, 0, ClockSettings::MAX_EQAMA) ||
+      !readIntArg("m", next.eqamaMaghrib, 0, ClockSettings::MAX_EQAMA) ||
+      !readIntArg("e", next.eqamaEsha, 0, ClockSettings::MAX_EQAMA))
   {
     respond("Error");
     return;
@@ -2105,7 +2327,7 @@ void handleSelfTest()
   if (!beginV2("/selfTest", true))
     return;
   const uint16_t heap = ESP.getFreeHeap();
-  const bool configOk = config.isValid();
+  const bool configOk = persistedSequence && config.isValid();
   const bool rtcOk = sysFlags.rtcOk();
   const bool timeValid = sysFlags.rtcTimeValid();
   const bool wifiOk = WiFi.getMode() == WIFI_AP || WiFi.getMode() == WIFI_AP_STA;
@@ -2124,10 +2346,20 @@ void handleSelfTest()
 
 void runV2(const char *path, void (*handler)(), bool allowBeforeChange = false)
 {
+#if DMDESP_SCAN_DIAGNOSTICS
+  const uint32_t apiStartedUs = micros();
+#endif
   if (!beginV2(path, allowBeforeChange))
     return;
   handler();
   endV2();
+#if DMDESP_SCAN_DIAGNOSTICS
+  const uint32_t apiUs = micros() - apiStartedUs;
+  if (apiUs > scanDiag.apiMaxUs) {
+    scanDiag.apiMaxUs = apiUs;
+    scanDiag.apiPath = path;
+  }
+#endif
 }
 void handleV2GetData() { runV2("/getData", handleGetData, true); }
 void handleV2SetDateTime() { runV2("/setDateTime", handleSetDateTime); }
@@ -2253,6 +2485,11 @@ void renderOtaSuccess()
 
 void handleOTAComplete()
 {
+  if (otaSuccessPendingRestart || sysFlags.restartNow())
+  {
+    server.send(503, "text/plain", "UpdateError:busy");
+    return;
+  }
   // Finalize only after the entire multipart request, not just its file part.
   if (sysFlags.updateNow() && otaUploadComplete &&
       (!otaSizeProvided || otaReceivedSize == otaExpectedSize))
@@ -2294,6 +2531,8 @@ void handleOTAComplete()
 }
 void handleOTAUpload()
 {
+  // An accepted image must remain untouched until eboot installs it.
+  if (otaSuccessPendingRestart || sysFlags.restartNow()) return;
   HTTPUpload &upload = server.upload();
   if (upload.status == UPLOAD_FILE_START)
   {
@@ -2312,15 +2551,29 @@ void handleOTAUpload()
     const String sizeText = server.hasArg("size") ? server.arg("size") : String();
     if (!sizeText.isEmpty())
     {
-      if (sizeText.length() > 10) return;
-      for (unsigned int i = 0; i < sizeText.length(); ++i)
+      bool sizeOk = sizeText.length() <= 10;
+      for (unsigned int i = 0; sizeOk && i < sizeText.length(); ++i)
       {
-        if (sizeText[i] < '0' || sizeText[i] > '9') return;
+        if (sizeText[i] < '0' || sizeText[i] > '9')
+        {
+          sizeOk = false;
+          break;
+        }
         const uint8_t digit = sizeText[i] - '0';
-        if (otaExpectedSize > (UINT32_MAX - digit) / 10) return;
+        if (otaExpectedSize > (UINT32_MAX - digit) / 10)
+        {
+          sizeOk = false;
+          break;
+        }
         otaExpectedSize = otaExpectedSize * 10 + digit;
       }
-      if (!otaExpectedSize) return;
+      if (!sizeOk || !otaExpectedSize)
+      {
+        otaErrorCode = "incomplete";
+        otaFileSeen = false;
+        otaFail();
+        return;
+      }
       otaSizeProvided = true;
     }
     const uint32_t available = ESP.getFreeSketchSpace();
@@ -2449,6 +2702,34 @@ void initServer()
   DBGLN(F("Web server started"));
 }
 
+#if DEBUG
+// Debug-only Wi-Fi switch for comparing display timing with and without AP traffic.
+void serviceDebugSerial()
+{
+  while (Serial.available() > 0)
+  {
+    const int command = Serial.read();
+    if (command == 'w' || command == 'W')
+    {
+      debugWifiDisabled = true;
+      server.stop();
+      WiFi.softAPdisconnect(true);
+      WiFi.mode(WIFI_OFF);
+      DBGLN(F("WiFi disabled by serial command"));
+    }
+    else if (command == 'a' || command == 'A')
+    {
+      debugWifiDisabled = false;
+      initAP();
+      server.begin();
+      DBGLN(F("WiFi AP restored by serial command"));
+    }
+  }
+}
+#else
+inline void serviceDebugSerial() {}
+#endif
+
 void testMode()
 {
   static unsigned long testStartMs = 0;
@@ -2471,8 +2752,89 @@ void testMode()
   markDisplayDirty();
 }
 
+#if defined(P10_FONT_VISUAL_TEST) && P10_FONT_VISUAL_TEST
+static_assert(DISPLAYS_WIDE == 4 && DISPLAYS_HIGH == 1,
+              "Font bench pages are sized for P104 4x1 only");
+static const unsigned long FONT_TEST_HOLD_MS =
+#if defined(P10_SMALL8_TEST) && P10_SMALL8_TEST
+    10000UL;
+static const char FONT_TEST_PAGES[][64] PROGMEM = {
+    "الصلاة", "الإقامة", "المغرب"};
+#else
+    6000UL;
+static const char FONT_TEST_PAGES[][64] PROGMEM = {
+    "ب  ت  ث", "ج  ح  خ", "د  ذ  ر  ز", "س  ش  ص  ض",
+    "ط  ظ  ع  غ", "ف  ق  ك", "ل  م  ن", "ه  ة  و  ي",
+    "أ  إ  آ  ؤ  ئ", "لا  لأ  لإ  لآ",
+    "تثبيت", "النبي", "سبحان", "الصلاة", "الإقامة",
+    "الظهر", "المغرب", "العشاء"};
+#endif
+
+static bool renderFontVisualTest(unsigned long now)
+{
+  static uint8_t page = 0;
+  static unsigned long pageStartedMs = 0;
+  static bool started = false;
+  const uint8_t count = sizeof(FONT_TEST_PAGES) / sizeof(FONT_TEST_PAGES[0]);
+  if (page >= count)
+    return false;
+  if (started && now - pageStartedMs >= FONT_TEST_HOLD_MS)
+  {
+    ++page;
+    started = false;
+    if (page >= count)
+    {
+      applySettings();
+      clearDisplay();
+      markDisplayDirty();
+      dispState.setFirstShow(true);
+      dispState.cardTimer = now + MS_CARD_DURATION;
+      return false;
+    }
+  }
+#if defined(P10_SMALL8_TEST) && P10_SMALL8_TEST
+  dmd.setFont(TahomaP10_8_Trial);
+#else
+  dmd.setFont(config.digitStyle == 1 ? TahomaBold16Indic : TahomaBold16);
+#endif
+  if (!started)
+  {
+    pageStartedMs = now;
+    started = true;
+    safeCopyP(dispState.runText, FONT_TEST_PAGES[page], sizeof(dispState.runText));
+    smartText.setShaping(true);
+    smartText.setRightToLeft(false); // Same Arabic direction as normal cards.
+#if defined(P10_SMALL8_TEST) && P10_SMALL8_TEST
+    clearDisplay();
+    char shaped[64];
+    ArabicShaper::shape(dispState.runText, shaped, sizeof(shaped));
+    dmd.setFont(config.digitStyle == 1 ? Tahoma7Indic : Tahoma7);
+    drawDisplayText((DISPLAY_PROFILE.width - displayTextWidth(shaped)) / 2, 0, shaped);
+    dmd.setFont(TahomaP10_8_Trial);
+    smartText.setArea(8, 8);
+#else
+    smartText.setArea(0, DISPLAY_PROFILE.height);
+#endif
+    smartText.reset();
+  }
+  smartText.draw(dispState.runText,
+#if defined(P10_SMALL8_TEST) && P10_SMALL8_TEST
+                 8,
+#else
+                 0,
+#endif
+                 now);
+  if (smartText.consumeDirty())
+    markDisplayDirty();
+  return true;
+}
+#endif
+
 void recordLoopTelemetry(uint32_t startedUs, unsigned long now)
 {
+#if DMDESP_SCAN_DIAGNOSTICS
+  finishScanStage(3);
+#endif
 #if DEBUG
   static uint32_t maxLoopUs = 0;
   static unsigned long lastReport = 0;
@@ -2492,21 +2854,60 @@ void recordLoopTelemetry(uint32_t startedUs, unsigned long now)
   (void)startedUs;
   (void)now;
 #endif
+#if DMDESP_SCAN_DIAGNOSTICS
+  reportScanDiagnostics(now);
+#endif
+}
+
+static void prepareNarrowSplash()
+{
+  safeCopyP(splashCompany, config.language == LANG_EN ? SPLASH_TITLE_EN : SPLASH_TITLE,
+            sizeof(splashCompany));
+  safeCopy(splashPhone, "01030007330", sizeof(splashPhone));
+  dmd.setFont(BasitFont7);
+  splashTopText.reset();
+  splashBottomText.reset();
+  narrowSplashReady = true;
+}
+
+static void renderNarrowSplash(unsigned long now)
+{
+  if (!narrowSplashReady)
+    prepareNarrowSplash();
+  dmd.setFont(BasitFont7);
+  splashTopText.setArea(0, 8);
+  splashTopText.setSpeed(50);
+  splashTopText.setRightToLeft(false);
+  splashBottomText.setArea(8, 8);
+  splashBottomText.setSpeed(50);
+  splashBottomText.setRightToLeft(true);
+  splashTopText.draw(splashCompany, 0, now);
+  splashBottomText.draw(splashPhone, 8, now);
+  if (splashTopText.consumeDirty() || splashBottomText.consumeDirty())
+    markDisplayDirty();
 }
 
 void splashScreen()
 {
-  char title[32];
-  char shapedTitle[32];
-  safeCopyP(title, config.language == LANG_EN ? SPLASH_TITLE_EN : SPLASH_TITLE,
-            sizeof(title));
-  ArabicShaper::shape(title, shapedTitle, sizeof(shapedTitle));
   clearDisplay();
   dmd.setFont(BasitFont7);
-  drawDisplayText((DISPLAY_PROFILE.width - displayTextWidth(shapedTitle)) >> 1,
-                  0, shapedTitle);
-  drawDisplayText((DISPLAY_PROFILE.width - displayTextWidth("01030007330")) >> 1,
-                  DISPLAY_PROFILE.smallTextY, "01030007330");
+  if (DISPLAY_PROFILE.narrow())
+  {
+    prepareNarrowSplash();
+    renderNarrowSplash(millis());
+  }
+  else
+  {
+    char title[32];
+    char shapedTitle[32];
+    safeCopyP(title, config.language == LANG_EN ? SPLASH_TITLE_EN : SPLASH_TITLE,
+              sizeof(title));
+    ArabicShaper::shape(title, shapedTitle, sizeof(shapedTitle));
+    drawDisplayText((DISPLAY_PROFILE.width - displayTextWidth(shapedTitle)) >> 1,
+                    0, shapedTitle);
+    drawDisplayText((DISPLAY_PROFILE.width - displayTextWidth("01030007330")) >> 1,
+                    DISPLAY_PROFILE.smallTextY, "01030007330");
+  }
   markDisplayDirty();
   applySettings();
 }
@@ -2535,26 +2936,25 @@ void setup()
   bootResetInfo.replace('\n', ' ');
   safeCopy(resetInfo, bootResetInfo.c_str(), sizeof(resetInfo));
 
-  configStoreReady = LittleFS.begin();
-  if (!configStoreReady)
-  {
-    // New OTA units may have an unused LittleFS partition; initialize it once.
-    DBGLN(F("LittleFS mount failed; formatting"));
-    if (LittleFS.format())
-      configStoreReady = LittleFS.begin();
-  }
+  configStoreReady = ClockStorage::begin();
   if (!loadConfig())
   {
-    DBGLN(F("No config, using defaults"));
-    if (!resetConfig())
+    config.setDefaults();
+    const bool newStore = configStoreReady && !LittleFS.exists(CONFIG_STORE_A) &&
+                          !LittleFS.exists(CONFIG_STORE_B) && !LittleFS.exists(CONFIG_STORE_TMP);
+    if (!newStore || !resetConfig())
     {
-      config.setDefaults(); // Keep AP usable even if initial Flash save fails.
-      DBGLN(F("Default save failed; defaults are RAM-only"));
+      DBGLN(F("Storage unavailable or invalid; original files retained"));
     }
   }
-  loadPrayerPrefs();
-  loadPowerPrefs();
-  loadCardPrefs();
+  if (persistedSequence)
+  {
+    loadPrayerPrefs();
+    loadPowerPrefs();
+    loadCardPrefs();
+  }
+  else
+    resetCardPrefsRuntime();
   dispState.cardNum = CardScheduler::firstIndex(cardOrder, cardEnabledMask) + 1;
   pinMode(FACTORY_RESET_PIN, INPUT_PULLUP);
 
@@ -2574,12 +2974,13 @@ void setup()
 
   splashScreen();
   presentDisplayFrame();
+  splashStartedMs = millis();
 
   if (startRTC(true))
   {
     DBGLN(sysFlags.rtcTimeValid() ? F("RTC OK") : F("RTC connected; time invalid"));
     adjustTime();
-    syncRTC();
+    // startRTC() already took the first validated RTC sample.
   }
   else
   {
@@ -2598,13 +2999,26 @@ void loop()
 {
   const uint32_t loopStartedUs = micros();
   dmd.loop();
+#if DMDESP_SCAN_DIAGNOSTICS
+  scanStageStartedUs = micros();
+#endif
   unsigned long now = millis();
   serviceRTC(now);
   updateRtcBootIndicator(now);
   serviceWiFi(now);
   serviceFactoryReset(now);
+  serviceDebugSerial();
+#if DMDESP_SCAN_DIAGNOSTICS
+  finishScanStage(0);
+#endif
   yield();
+#if DMDESP_SCAN_DIAGNOSTICS
+  finishScanStage(1);
+#endif
   server.handleClient();
+#if DMDESP_SCAN_DIAGNOSTICS
+  finishScanStage(2);
+#endif
   now = millis(); // A request may have reset the RTC/software tick deadline.
 
   // Re-apply auto brightness when crossing into/out of night.
@@ -2637,11 +3051,15 @@ void loop()
 
   if (sysFlags.splashScreen())
   {
-    if (now >= MS_SPLASH)
+    if (DISPLAY_PROFILE.narrow())
+      renderNarrowSplash(now);
+    if (splashStartedMs && now - splashStartedMs >= MS_SPLASH)
     {
       sysFlags.setSplash(false);
       syncRTC();
       clearDisplay();
+      narrowSplashReady = false;
+      applySettings(); // narrow splash uses BasitFont7; restore user font for cards
       markDisplayDirty();
     }
     presentDisplayFrame();
@@ -2685,19 +3103,65 @@ void loop()
     cachedNowMins = nowMins;
   }
 
-  if (!sysFlags.rtcOk() || !sysFlags.rtcTimeValid())
+#if defined(P10_FONT_VISUAL_TEST) && P10_FONT_VISUAL_TEST
+  // Bench-only display; timed once, without suspending RTC/Wi-Fi service.
+  if (renderFontVisualTest(now))
+  {
+    presentDisplayFrame();
+    recordLoopTelemetry(loopStartedUs, now);
+    return;
+  }
+#endif
+
+  const bool timeInvalid = !sysFlags.rtcTimeValid();
+  const bool displayError = !persistedSequence || !sysFlags.rtcOk() || timeInvalid;
+  if (!displayError && narrowErrorFontForced)
+  {
+    applySettings();
+    narrowErrorFontForced = false;
+  }
+  if (displayError)
   {
     dispState.setStopCards(true);
     smartText.setArea(0, DISPLAY_PROFILE.height);
-    const char *rtcError = !sysFlags.rtcOk()
-                               ? RTC_DISCONNECTED_TEXT
-                               : (config.language == LANG_EN
-                                      ? RTC_TIME_INVALID_TEXT_EN
-                                      : RTC_TIME_INVALID_TEXT_AR);
+    if (DISPLAY_PROFILE.narrow() && !narrowErrorFontForced)
+    {
+      // A 16px font cannot fit a useful status on a 1x1 panel.
+      dmd.setFont(BasitFont7);
+      smartText.reset();
+      narrowErrorFontForced = true;
+    }
+    const char *rtcError = nullptr;
+    if (DISPLAY_PROFILE.narrow())
+    {
+      if (!persistedSequence)
+        rtcError = STORAGE_ERROR_SHORT;
+      else if (!sysFlags.rtcOk())
+        rtcError = RTC_DISCONNECTED_SHORT;
+      else if (config.language == LANG_EN)
+        rtcError = ((now / 1800UL) & 1U) ? RTC_TIME_INVALID_SHORT_EN_2
+                                        : RTC_TIME_INVALID_SHORT_EN_1;
+      else
+        rtcError = ((now / 1800UL) & 1U) ? RTC_TIME_INVALID_SHORT_AR_2
+                                        : RTC_TIME_INVALID_SHORT_AR_1;
+    }
+    else
+    {
+      rtcError = !persistedSequence
+                     ? (config.language == LANG_EN ? STORAGE_ERROR_TEXT_EN : STORAGE_ERROR_TEXT_AR)
+                     : !sysFlags.rtcOk()
+                     ? RTC_DISCONNECTED_TEXT
+                     : (config.language == LANG_EN
+                            ? RTC_TIME_INVALID_TEXT_EN
+                            : RTC_TIME_INVALID_TEXT_AR);
+    }
     safeCopyP(dispState.runText,
               rtcError,
               sizeof(dispState.runText));
-    smartText.drawFlash(dispState.runText, dispParams.yPos, now);
+    if (DISPLAY_PROFILE.narrow())
+      smartText.draw(dispState.runText, 0, now);
+    else
+      smartText.drawFlash(dispState.runText, dispParams.yPos, now);
     if (smartText.consumeDirty())
       markDisplayDirty();
   }

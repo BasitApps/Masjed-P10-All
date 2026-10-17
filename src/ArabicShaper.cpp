@@ -15,6 +15,10 @@ bool isAlefVariant(uint16_t cp) {
 
 bool isContinuation(uint8_t c) { return (c & 0xC0) == 0x80; }
 
+bool isBidiSeparator(uint8_t c) {
+  return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+}
+
 void consumeContinuationBytes(const char *&p) {
   while (*p && isContinuation(static_cast<uint8_t>(*p)))
     ++p;
@@ -179,7 +183,22 @@ size_t ArabicShaper::shape(const char *utf8, char *out, size_t outSize) {
       prevJoinsLeft = false;
     }
   }
-  // Visual reorder: reverse whole buffer, then un-reverse ASCII runs.
+  // Pure LTR text must keep its original order.
+  bool hasArabic = false;
+  for (size_t i = 0; i < o; ++i) {
+    if ((uint8_t)out[i] >= 0x80) {
+      hasArabic = true;
+      break;
+    }
+  }
+  if (!hasArabic) {
+    out[o] = '\0';
+    return o;
+  }
+
+  // Visual reorder: reverse Arabic glyphs, but keep each LTR run intact.
+  // Whitespace is a boundary, so a separator after a numeric run remains
+  // between that run and the following Arabic word on the display.
   for (size_t i = 0; i < o / 2; ++i) {
     char t = out[i];
     out[i] = out[o - 1 - i];
@@ -187,12 +206,14 @@ size_t ArabicShaper::shape(const char *utf8, char *out, size_t outSize) {
   }
   size_t i = 0;
   while (i < o) {
-    if ((uint8_t)out[i] >= 0x80) {
+    if ((uint8_t)out[i] >= 0x80 ||
+        isBidiSeparator((uint8_t)out[i])) {
       ++i;
       continue;
     }
     size_t j = i;
-    while (j < o && (uint8_t)out[j] < 0x80)
+    while (j < o && (uint8_t)out[j] < 0x80 &&
+           !isBidiSeparator((uint8_t)out[j]))
       ++j;
     for (size_t a = i, b = j - 1; a < b; ++a, --b) {
       char t = out[a];
