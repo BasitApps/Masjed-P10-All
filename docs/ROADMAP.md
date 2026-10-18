@@ -12,6 +12,19 @@ all eight P10 builds and both 7-segment builds pass. Android was unchanged in
 this batch; its prior Java compilation passed.
 Physical tests are deferred until the owner returns to the computer.
 
+### 2026-10-18 — P102 small-font layout and card selection
+
+- [x] Narrow P10 clocks now render centered in the fixed top row; the lower
+  row remains available for rotating cards.
+- [x] In the Android card panel, P101/P102 small-font mode keeps only the
+  fixed clock card out of the editable list. Day name, Gregorian date and
+  Hijri date are visible, reorderable and independently disableable like the
+  other lower-row cards. Wider P10 layouts retain their existing top-info
+  policy.
+- [x] P10 release builds for 1x1 through 4x1 pass. Android `testDebugUnitTest`
+  passes. No firmware upload, APK build or hardware/settings change was made.
+- [ ] Owner visual verification remains required on the real P102 display.
+
 ### 2026-10-13 — Preserve narrow-panel scroll phase on dynamic text
 
 - [x] `SmartText` now preserves the normalized scroll-cycle position when an
@@ -2223,3 +2236,171 @@ restart. The firmware performance/memory review is closed for this batch.
   pass collectively after rerunning the one failing pixel-scroll test.
 - [ ] No hardware upload, Android assets or Git publication. Physical
   confirmation of this image with the owner's revised artwork remains pending.
+
+### Owner-authorized temporary scan diagnostics — 2026-10-17
+
+- [x] Verified COM5 P104 identity (chip0x004fed96, MAC24:4c:ab:4f:ed:96)
+  and saved a complete4MiB flash backup before the temporary upload. The
+  installed image announces P104-rc4 (430208B), whereas current source builds
+  rc12; this difference limits comparison with the owner's original image.
+- [x] Enabled existing DMDESP_SCAN_DIAGNOSTICS using a task-local configuration
+  and separate build folder. No production source/profile or scan/OE/PWM
+  behavior changed. DEBUG4x1 build passed:RAM39136B,Flash430415B,BIN434560B.
+  Upload at115200 passed flash hash verification.
+- [x] Five-minute passive serial capture recorded30 windows/299183 scans,
+  all AP mode2/peers0 and no API/send/store activity. Mean gaps1001–1002us;
+  maximum gap7786us;37 gaps over5ms. Maximum rendering stage8141us and
+  scan duration985us. These software timings do not prove visible shimmer,
+  electrical OE behavior or a causal relationship between window maxima.
+- [x] Restored the exact original first1MiB from the flash backup at115200;
+  write hash and subsequent executable-region digest verification passed.
+  Original filesystem/EEPROM region0x300000–0x3FBFFF also verifies unchanged;
+  this region was not rewritten. No RTC/settings write, Android publication,
+  firmware-version publication or Git push. COM5 closed after normal reset.
+- [ ] Phone-connected/app-closed and physical pre-azan/static/moving comparisons
+  remain pending: no connected-peer window or owner visual response arrived
+  during this bounded capture. Final RTC/API/screen health was not observed.
+  No fix is claimed. Report, raw summaries, manifests and local recovery images:
+  `C:/Users/m_nag/.codex/visualizations/2026/10/17/01a14900-8f6f-7a02-ac4f-427e59861ad9/scan-diagnostics/`.
+
+### Pre-azan scene reproduced with owner observation — 2026-10-17
+
+- [x] Owner requested the pre-azan scene. A task-local source copy calls the
+  real checkPrayers branch for180s, supplying a synthetic phase/prayer in RAM
+  and restoring the real prayer cache after every call. RTC/software time,
+  saved prayer schedule, configuration and production sources are unchanged.
+  Native checks cover all1440 event minutes/midnight and cache restoration;
+  runner checks recovery after success, upload failure and capture failure.
+- [x] Temporary4x1 build passed:RAM39288B,Flash430871B,BIN435024B. Upload at
+  115200/hash verification passed; boot reports RTC OK. Current saved display
+  settings select small Basit/Indic digits. Owner confirmed the same strong
+  shimmer, then increased shimmer after connecting the phone; serial records
+  peers0 followed by peers1. No disconnection reversal was captured.
+- [x] Eighteen scene windows recorded no instrumented API/send/store activity.
+  Entry gap/render maxima7813/8435us. Excluding entry/connection-transition
+  windows leaves8 windows per state: no-peer maximum gaps5361–6005us and
+  refresh duration509us; one-peer gaps5528–6980us and refresh duration2048us.
+  Refresh duration includes preemption/yield; window maxima are not paired
+  events. These results reproduce the symptom, not a sole electrical cause.
+- [x] Exact original first1MiB restored with write hash verified; subsequent
+  executable and original filesystem/EEPROM digests both match. COM5 closed
+  after normal reset. No RTC/settings writes, Android assets or publication.
+- [ ] Frame-update versus unchanged-frame comparison remains pending. No
+  rendering/scan/OE fix attempted. The source diagnostic is rc12 versus the
+  original rc4 image; final restored API/RTC/screen health was not observed.
+  Report, owner observations and recovery logs are in sibling `preazan-probe/`
+  under the same task artifact directory as the preceding scan capture.
+
+### Frame-update / held-frame / resume comparison — 2026-10-17
+
+- [x] Owner approved continued diagnosis with the phone disconnected. Task-local
+  source runs ACTIVE1/HOLD/ACTIVE2 for60s each. HOLD skips rendering and retains
+  the completed frame while normal scan/network/RTC/software time continue.
+  Production sources, SPI/OE/PWM, saved settings and RTC are unchanged.
+- [x] Native checks pass60000 held iterations without repaint/clear, resumption,
+  cache restoration, millis rollover and invalid-RTC abort; recovery self-check
+  covers success/upload failure/capture failure. Build passes:RAM39352B,
+  Flash431039B,BIN435184B; USB115200 upload/hash verified; boot RTC OK.
+- [x] Owner reports usual shimmer in ACTIVE1, clearly reduced but residual
+  shimmer in HOLD, then usual shimmer again in ACTIVE2. Held-buffer CRC remains
+  64fed83a across HOLD. All scan windows report peers0/no API/send/store activity.
+  Excluding stage-transition windows gives5 windows per stage: maximum gaps
+  5718/1345/5514us, counts over5ms6/0/4, rendering maxima5092/65/5086us.
+  This supports contribution from frame-update work; drawing cost versus actual
+  buffer swapping is not isolated. Serial printing may affect residual shimmer,
+  and its excluded software intervals are not an electrical timing guarantee.
+- [x] Exact original executable restored and write hash verified. Independent
+  executable and original filesystem/EEPROM digests both match; COM5 closed
+  after normal reset. No RTC/settings writes, assets or release publication.
+- [ ] Back-buffer rendering without presentation remains untested. No fix or
+  sole electrical cause claimed. Final restored API/RTC/screen not observed.
+  Report, observations, generated probe and recovery logs: sibling
+  `frame-hold-probe/` in the same task artifact directory.
+
+### Cross-model release-readiness audit — 2026-10-17
+
+- [x] Completed a bounded read-only audit of P10, M73/M73s, Android and
+  located historical market firmware. Report:
+  `docs/RELEASE_READINESS_AUDIT_2026-10-17.md`. M71 firmware stays DEFERRED;
+  O72's bundled identity is verified but matching source remains unidentified.
+- [x] Fresh four P10 release and two M73 builds pass. Android34 JVM tests,
+  release lint and unsigned release APK build pass (24 lint warnings).
+  Three M73 native tests pass. All12 bundled BINs pass integrity checks;
+  all six modern Android assets differ from the fresh firmware builds.
+- [x] Verified remaining storage/credential failure paths with source review
+  and small extracted-source host fault models. Documented Android legacy
+  capability/error mismatches. Existing settings-fault tests cannot execute
+  because the delegated P10 test harness is missing; Android location test
+  fixture also needs correction. No physical fault frequency is claimed.
+- [ ] Market-wide final release is not ready: close the ranked report findings,
+  finish P10 shimmer diagnosis/owner acceptance, validate exact candidates on
+  hardware, then assign release versions, package verified assets and sign/test
+  Android upgrade. Shared modern API structure is not full behavioral parity.
+- [x] This audit changed documentation only. No production fixes, version bumps,
+  serial/network hardware operations, Android asset replacement, APK install,
+  signing or publication. Evidence is in the task artifact `release-audit/`.
+
+### Unified modern release 13 packaging — 2026-10-17
+
+- [x] Set the numeric firmware version to13 for all four P10 profiles. Because
+  market M73/M73s units already advertise15/14, their unified forward target is
+  16 (a target13 would be rejected as a downgrade). P10 startup markers are
+  P101-13/P102-13/P103-13/P104-13; M73/M73s markers are M73-16/M73s-16.
+  M73 checkUpdate now advertises16.
+- [x] Rebuilt `p10_1x1_release`, `p10_2x1_release`, `p10_3x1_release`,
+  `p10_4x1_release`, `ta73` and `ta73s`. The corrected publisher now maps the
+  actual P10 output names and stages all six outputs before replacing assets.
+- [x] Updated the Android modern catalog to latestVersion13 for P101–P104 and
+  latestVersion16 for M73/M73s, and refreshed catalog unit-test expectations.
+- [x] Copied the six verified BINs into Android `app/src/main/assets`. Each
+  asset is byte-identical to its corresponding build and contains the expected
+  version marker. SHA256 details are in the task artifact
+  `release-audit/firmware-modern-verification.json`.
+- [x] Android `testDebugUnitTest`, `lintRelease` and `bundleRelease` pass after
+  packaging. No APK/AAB was uploaded, no hardware was flashed, and the older
+  models remain unchanged.
+- [ ] Physical OTA/display/settings validation of the exact P10 release13 and
+  M73 release16 images, including the known P10 shimmer, remains required.
+
+### P101 clock heartbeat colon — 2026-10-18
+
+- [x] The fixed P101 top-row `HH:MM` clock now toggles its colon every second;
+  P103 and P104 keep their existing display behavior.
+- [x] The static large-font `HH:MM` clock on P102 uses the same fixed-position
+  colon blink; scrolling clock text is unchanged.
+- [x] During small-font iqama countdowns on P101/P102, the lower line now
+  alternates between the countdown and «الهاتف صامت»; other small cards remain unchanged.
+- [x] Sunrise sleep is disabled after its iqama on all P10 profiles; other
+  prayers retain the configured sleep behavior.
+- [ ] Physical visual check on P101 remains pending; no firmware upload was done.
+
+### P101/P102 splash layout — 2026-10-18
+
+- [x] Narrow splash uses a short centered `Basit` identity; only the phone
+  number scrolls when the selected width cannot contain it.
+- [x] Invalid RTC status on P101/P102 now renders `اضبط` and `الوقت` on two
+  fixed rows (or `SET`/`TIME` in English) instead of alternating one line.
+- [x] All four P10 release environments build successfully after the change.
+
+### Prayer sleep boundary — 2026-10-18
+
+- [x] Fixed the off-by-one phase boundary that skipped the sleep window when
+  `sleepPrayerTime=1` and shortened longer sleep windows by one minute.
+- [x] The display window now remains active through the corrected sleep and
+  following azkar minute; the focused contract test passes.
+- [x] All four P10 release environments build successfully after the fix.
+- [x] The corrected P101–P104 BINs were copied to Android assets and verified
+  byte-for-byte by SHA256.
+- [ ] Physical P102 verification after uploading the new BIN remains pending.
+- [x] The post-Friday-label P101–P104 BINs were synchronized to Android assets
+  and verified byte-for-byte by SHA256.
+- [x] The matching `updateP101.bin`–`updateP104.bin` assets were copied to the
+  Android project and verified byte-for-byte by SHA256.
+- [ ] Physical visual check on P101/P102 remains pending; no firmware upload
+  was done.
+
+### Friday event label — 2026-10-18
+
+- [x] Friday's Dhuhr event now uses the `Jumaa` label in both the pre-azan and
+  azan windows; the prayer-times card keeps the regular `Dhuhr` slot label.
+- [x] All four P10 release environments build successfully after the change.

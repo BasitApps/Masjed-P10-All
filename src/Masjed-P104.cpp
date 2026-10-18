@@ -548,7 +548,14 @@ void updatePrayerWindow(int16_t nowMins)
     if (i == 2 && timeData.dow == 5)
       end = pt + config.sleepGomaaTime + 2;
     else
-      end = pt + eqamaCache.times[i] + eqamaCache.sleepTime + 1;
+    {
+      const bool skipSunriseSleep =
+          i == PrayerIndex::Sunrise;
+      const int8_t sleepMinutes = eqamaCache.sleepTime;
+      const int16_t postEqamaWindow =
+          skipSunriseSleep ? 0 : (sleepMinutes > 0 ? sleepMinutes + 1 : 0);
+      end = pt + eqamaCache.times[i] + postEqamaWindow + 1;
+    }
 
     if (minuteInWindow(nowMins, start, end))
     {
@@ -832,7 +839,8 @@ static int8_t topFontY()
 }
 
 static void drawTopText(int16_t start, int16_t width, const char *text,
-                        bool alignRight)
+                        bool alignRight, bool alignCenter = false,
+                        bool hideColon = false)
 {
   static Bitmap line(DISPLAY_PROFILE.width, DISPLAY_PROFILE.topLineHeight);
   if (!line.isValid())
@@ -841,7 +849,29 @@ static void drawTopText(int16_t start, int16_t width, const char *text,
   line.setTextColor(dmd.textColor());
   line.clear();
   const int16_t textWidth = displayTextWidth(text);
-  drawDisplayText(alignRight ? width - 1 - textWidth : 0,
+  const int16_t drawX = alignCenter
+                            ? (width > textWidth ? (width - textWidth) / 2 : 0)
+                            : (alignRight ? width - 1 - textWidth : 0);
+  int16_t colonSourceX = -1;
+  if (hideColon)
+  {
+    const char *colon = strchr(text, ':');
+    if (colon)
+    {
+      colonSourceX = drawX;
+      for (const char *q = text; q < colon; ++q)
+      {
+        int charWidth = line.charWidth(*q);
+        if (charWidth <= 0)
+          charWidth = 1;
+        colonSourceX += charWidth;
+        if (needsTextGap(static_cast<unsigned char>(*q),
+                         static_cast<unsigned char>(q[1])))
+          ++colonSourceX;
+      }
+    }
+  }
+  drawDisplayText(drawX,
                   topFontY(), text, line);
   int16_t firstInk = width, lastInk = -1;
   for (int16_t x = 0; x < width; ++x)
@@ -860,10 +890,20 @@ static void drawTopText(int16_t start, int16_t width, const char *text,
     const int16_t inkWidth = min(int16_t(width - 1),
                                  int16_t(lastInk - firstInk + 1));
     const int16_t sourceX = alignRight ? lastInk - inkWidth + 1 : firstInk;
-    const int16_t targetX = alignRight ? width - 1 - inkWidth : 1;
+    const int16_t targetX = alignCenter
+                                ? (width > inkWidth ? (width - inkWidth) / 2 : 0)
+                                : (alignRight ? width - 1 - inkWidth : 1);
     // One outer pixel of margin; copying cannot cross this zone's boundaries.
     line.copy(sourceX, 0, inkWidth, DISPLAY_PROFILE.topLineHeight,
               &dmd, start + targetX, 0);
+    if (colonSourceX >= sourceX && colonSourceX < sourceX + inkWidth)
+    {
+      int16_t colonWidth = line.charWidth(':');
+      if (colonWidth <= 0)
+        colonWidth = 1;
+      dmd.fill(start + targetX + colonSourceX - sourceX, 0, colonWidth,
+               DISPLAY_PROFILE.topLineHeight, Bitmap::Black);
+    }
   }
   markDisplayDirty();
 }
@@ -899,6 +939,7 @@ void drawTopClock()
   }
   int2str2(p, CivilTime::displayHour(timeData.hour, config.hour24));
   p += 2;
+  const bool hideColon = clockArea <= 32 && (timeData.sec & 1);
   *p++ = ':';
   int2str2(p, timeData.min);
   p += 2;
@@ -909,7 +950,7 @@ void drawTopClock()
     p += 2;
   }
   *p = '\0';
-  drawTopText(0, clockArea, fmtBuf, false);
+  drawTopText(0, clockArea, fmtBuf, false, DISPLAY_PROFILE.narrow(), hideColon);
 }
 void drawTopInfo()
 {
@@ -1063,7 +1104,8 @@ void drawTopLine()
 }
 void displayText(const char *text1, const char *text2 = nullptr,
                  bool flash = false, bool autoNext = true,
-                 unsigned long now = 0)
+                 unsigned long now = 0, bool blinkColon = false,
+                 bool allowSmallAlternate = false)
 {
   static bool wasAlternating = false;
   static bool showFirst = true;
@@ -1074,7 +1116,8 @@ void displayText(const char *text1, const char *text2 = nullptr,
   if (dispParams.isSmall)
     drawTopLine();
 
-  const bool alternating = !dispParams.isSmall && text2 && text2[0];
+  const bool alternating = text2 && text2[0] &&
+                           (!dispParams.isSmall || allowSmallAlternate);
   if (!alternating || !wasAlternating || lastRevision != displayRevision)
   {
     showFirst = true;
@@ -1096,8 +1139,12 @@ void displayText(const char *text1, const char *text2 = nullptr,
   smartText.setSpeed(dispState.scrollSpeed);
   smartText.setRightToLeft(config.language == LANG_EN);
 
-  bool done = flash ? smartText.drawFlash(text, dispParams.yPos, now)
-                    : smartText.draw(text, dispParams.yPos, now);
+  bool done = flash
+                  ? smartText.drawFlash(text, dispParams.yPos, now)
+                  : (blinkColon
+                         ? smartText.drawClock(text, dispParams.yPos, now,
+                                               (timeData.sec & 1) != 0)
+                         : smartText.draw(text, dispParams.yPos, now));
   if (smartText.consumeDirty())
     markDisplayDirty();
 
@@ -1144,9 +1191,15 @@ void checkPrayers(unsigned long now, int16_t nowMins)
     const int8_t eq = eqamaCache.times[i];
     const int16_t since = signedMinuteDelta(nowMins, pt);
     safeCopyP(prayerNameBuf, prayerName(i), sizeof(prayerNameBuf));
+    if (i == 2 && friday)
+      safeCopyP(prayerNameBuf, english ? MSG_JUMAA_EN : MSG_JUMAA,
+                sizeof(prayerNameBuf));
     const bool skipEq = (i == 2 && friday);
+    const bool skipSunriseSleep =
+        i == PrayerIndex::Sunrise;
     const PrayerPhase phase =
-        prayerPhase(since, skipEq ? 0 : eq, sleepTime);
+        prayerPhase(since, skipEq ? 0 : eq,
+                    skipSunriseSleep ? 0 : sleepTime);
     // 1. Pre-Prayer (3 mins before: delta 3, 2, 1)
     if (phase == PrayerPhase::PreAzan)
     {
@@ -1170,9 +1223,6 @@ void checkPrayers(unsigned long now, int16_t nowMins)
       }
       else
       {
-        if (i == 2 && friday)
-          safeCopyP(prayerNameBuf, english ? MSG_JUMAA_EN : MSG_JUMAA,
-                    sizeof(prayerNameBuf));
         if (DISPLAY_PROFILE.width <= 32)
         {
           // The 1x1 width cannot show the extra "Adhan/أذان" label.
@@ -1210,7 +1260,8 @@ void checkPrayers(unsigned long now, int16_t nowMins)
                  forwardMinuteDistance(nowMins, pt + eq));
       safeCopyP(dispState.tempBuf, english ? MSG_PHONE_SILENT_EN : MSG_PHONE_SILENT_AR,
                 sizeof(dispState.tempBuf));
-      displayText(dispState.runText, dispState.tempBuf, false, false, now);
+      displayText(dispState.runText, dispState.tempBuf, false, false, now,
+                  false, DISPLAY_PROFILE.narrow());
       return;
     }
     if (phase == PrayerPhase::EqamaSeconds)
@@ -1467,7 +1518,8 @@ void cardClock()
     p += 2;
   }
   *p = '\0';
-  displayText(dispState.runText, nullptr, false, true, millis());
+  displayText(dispState.runText, nullptr, false, true, millis(),
+              DISPLAY_PROFILE.width == 64);
 }
 void cardPrayers()
 {
@@ -2861,7 +2913,7 @@ void recordLoopTelemetry(uint32_t startedUs, unsigned long now)
 
 static void prepareNarrowSplash()
 {
-  safeCopyP(splashCompany, config.language == LANG_EN ? SPLASH_TITLE_EN : SPLASH_TITLE,
+  safeCopyP(splashCompany, config.language == LANG_EN ? SPLASH_SHORT_EN : SPLASH_SHORT_AR,
             sizeof(splashCompany));
   safeCopy(splashPhone, "01030007330", sizeof(splashPhone));
   dmd.setFont(BasitFont7);
@@ -2876,10 +2928,10 @@ static void renderNarrowSplash(unsigned long now)
     prepareNarrowSplash();
   dmd.setFont(BasitFont7);
   splashTopText.setArea(0, 8);
-  splashTopText.setSpeed(50);
+  splashTopText.setSpeed(80);
   splashTopText.setRightToLeft(false);
   splashBottomText.setArea(8, 8);
-  splashBottomText.setSpeed(50);
+  splashBottomText.setSpeed(80);
   splashBottomText.setRightToLeft(true);
   splashTopText.draw(splashCompany, 0, now);
   splashBottomText.draw(splashPhone, 8, now);
@@ -3129,6 +3181,8 @@ void loop()
       // A 16px font cannot fit a useful status on a 1x1 panel.
       dmd.setFont(BasitFont7);
       smartText.reset();
+      splashTopText.reset();
+      splashBottomText.reset();
       narrowErrorFontForced = true;
     }
     const char *rtcError = nullptr;
@@ -3155,15 +3209,38 @@ void loop()
                             ? RTC_TIME_INVALID_TEXT_EN
                             : RTC_TIME_INVALID_TEXT_AR);
     }
-    safeCopyP(dispState.runText,
-              rtcError,
-              sizeof(dispState.runText));
-    if (DISPLAY_PROFILE.narrow())
-      smartText.draw(dispState.runText, 0, now);
+    const bool narrowTimeError = DISPLAY_PROFILE.narrow() &&
+                                 persistedSequence && sysFlags.rtcOk() &&
+                                 !sysFlags.rtcTimeValid();
+    if (narrowTimeError)
+    {
+      safeCopyP(splashCompany,
+                config.language == LANG_EN ? RTC_TIME_INVALID_SHORT_EN_1
+                                            : RTC_TIME_INVALID_SHORT_AR_1,
+                sizeof(splashCompany));
+      safeCopyP(splashPhone,
+                config.language == LANG_EN ? RTC_TIME_INVALID_SHORT_EN_2
+                                            : RTC_TIME_INVALID_SHORT_AR_2,
+                sizeof(splashPhone));
+      splashTopText.setArea(0, 8);
+      splashTopText.setRightToLeft(false);
+      splashBottomText.setArea(8, 8);
+      splashBottomText.setRightToLeft(false);
+      splashTopText.draw(splashCompany, 0, now);
+      splashBottomText.draw(splashPhone, 8, now);
+      if (splashTopText.consumeDirty() || splashBottomText.consumeDirty())
+        markDisplayDirty();
+    }
     else
-      smartText.drawFlash(dispState.runText, dispParams.yPos, now);
-    if (smartText.consumeDirty())
-      markDisplayDirty();
+    {
+      safeCopyP(dispState.runText, rtcError, sizeof(dispState.runText));
+      if (DISPLAY_PROFILE.narrow())
+        smartText.draw(dispState.runText, 0, now);
+      else
+        smartText.drawFlash(dispState.runText, dispParams.yPos, now);
+      if (smartText.consumeDirty())
+        markDisplayDirty();
+    }
   }
   else if (!ultraPowerSaveActive())
     checkPrayers(now, timeData.hour * 60 + timeData.min);

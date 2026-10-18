@@ -9,7 +9,7 @@ SmartText::SmartText(DMDESP &d, int16_t w)
     : disp(d), width(w), textW(0), scrollX(0), lastMs(0), flashMs(0), speed(50),
       flashSpeed(1000), areaY(0), areaH(16), drawY(0), isNew(true),
       flashVisible(true), shaping(true), rightToLeft(false), dirty(false),
-      preserveScrollOnUpdate(false) {
+      preserveScrollOnUpdate(false), colonHidden(false) {
   text[0] = '\0';
   srcCache[0] = '\0';
 }
@@ -31,6 +31,7 @@ void SmartText::reset() {
   flashVisible = true;
   flashMs = 0;
   preserveScrollOnUpdate = false;
+  colonHidden = false;
 }
 
 inline void SmartText::clearArea() {
@@ -81,6 +82,44 @@ void SmartText::drawTextFast(int x, int y, const char *str) {
 
 inline void SmartText::drawCentered() {
   drawTextFast((width - textW) >> 1, drawY, text);
+}
+
+int16_t SmartText::colonX() const {
+  const char *colon = strchr(text, ':');
+  if (!colon)
+    return INT16_MIN;
+  int16_t x = textW <= width ? (width - textW) >> 1 : scrollX;
+  for (const char *p = text; p < colon; ++p) {
+    int glyphWidth = disp.charWidth(*p);
+    if (glyphWidth <= 0)
+      glyphWidth = 1;
+    x += glyphWidth;
+    if (needsTextGap(static_cast<unsigned char>(*p),
+                     static_cast<unsigned char>(p[1])))
+      ++x;
+  }
+  return x;
+}
+
+void SmartText::applyColon(bool hide) {
+  const int16_t x = colonX();
+  if (x == INT16_MIN)
+    return;
+  int colonWidth = disp.charWidth(':');
+  if (colonWidth <= 0)
+    colonWidth = 1;
+  if (hide) {
+    const int16_t first = x > 0 ? x : 0;
+    const int16_t last = x + colonWidth - 1 < width
+                             ? x + colonWidth - 1
+                             : width - 1;
+    if (first <= last)
+      disp.drawFilledRect(first, drawY, last, drawY + disp.textHeight() - 1,
+                          Bitmap::Black);
+  } else {
+    disp.drawChar(x, drawY, ':');
+  }
+  dirty = true;
 }
 
 #if SMARTTEXT_PIXEL_SCROLL
@@ -293,6 +332,28 @@ bool SmartText::draw(const char *src, int8_t y, unsigned long now) {
 
   drawTextFast(scrollX, drawY, text);
   return false;
+}
+
+bool SmartText::drawClock(const char *src, int8_t y, unsigned long now,
+                          bool hideColon) {
+  const bool wasHidden = colonHidden;
+  const int16_t oldColonX = colonX();
+  const bool done = draw(src, y, now);
+  if (textW > width) {
+    // The clock colon blinks only while the complete clock fits statically.
+    colonHidden = false;
+    return done;
+  }
+  const int16_t newColonX = colonX();
+
+  if (hideColon) {
+    if (!wasHidden || dirty || oldColonX != newColonX)
+      applyColon(true);
+  } else if (wasHidden && !dirty) {
+    applyColon(false);
+  }
+  colonHidden = hideColon;
+  return done;
 }
 
 bool SmartText::drawFlash(const char *src, int8_t y, unsigned long now) {

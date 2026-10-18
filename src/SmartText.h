@@ -13,6 +13,8 @@ public:
   SmartText(DMDESP &d, int16_t w);
 
   bool draw(const char *text, int8_t y, unsigned long now);
+  bool drawClock(const char *text, int8_t y, unsigned long now,
+                 bool hideColon);
   bool drawFlash(const char *text, int8_t y, unsigned long now);
 
   void setSpeed(uint16_t ms) { speed = ms ? ms : 50; }
@@ -43,6 +45,8 @@ private:
   void drawTextFast(int x, int y, const char *str);
   void clearArea();
   void drawCentered();
+  int16_t colonX() const;
+  void applyColon(bool hide);
 #if SMARTTEXT_PIXEL_SCROLL
   bool shiftTextPixels();
   void drawIncomingColumn(int16_t x);
@@ -60,7 +64,7 @@ private:
   char text[BUF_TEXT];
   char srcCache[BUF_TEXT];
   bool isNew, flashVisible, shaping, rightToLeft, dirty,
-      preserveScrollOnUpdate;
+      preserveScrollOnUpdate, colonHidden;
 };
 
 #endif

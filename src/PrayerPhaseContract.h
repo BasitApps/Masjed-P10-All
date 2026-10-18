@@ -30,9 +30,9 @@ inline PrayerPhase prayerPhase(int16_t since, int16_t eqama, int16_t sleep)
     return PrayerPhase::Outside;
   if (since >= 2 && since < eqama - 1)
     return PrayerPhase::EqamaCountdown;
-  if (since > eqama && since < eqama + sleep)
+  if (sleep > 0 && since > eqama && since <= eqama + sleep)
     return PrayerPhase::Sleep;
-  if (since >= eqama + sleep && since < eqama + sleep + 1)
+  if (sleep > 0 && since == eqama + sleep + 1)
     return PrayerPhase::Azkar;
   return PrayerPhase::Outside;
 }
