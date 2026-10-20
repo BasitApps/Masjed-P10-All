@@ -804,6 +804,7 @@ static void drawDisplayText(int16_t x, int8_t y, const char *text,
       target.drawFilledRect(x, y, x, y + target.textHeight() - 1, Bitmap::Black);
       ++x;
     }
+    dmd.loop(); // Drawing shares the foreground with panel scanning.
   }
 }
 
@@ -823,11 +824,19 @@ static int8_t topFontY()
     uint16_t bytes = fixed ? count * pgm_read_byte(font + 2) : 0;
     if (!fixed)
       for (uint16_t i = 0; i < count; ++i)
+      {
         bytes += pgm_read_byte(font + 6 + i);
+        if ((i & 63) == 63)
+          dmd.loop();
+      }
     const uint8_t *glyphs = font + 6 + (fixed ? 0 : count);
     uint8_t rows = 0;
     for (uint16_t i = 0; i < bytes; ++i)
+    {
       rows |= pgm_read_byte(glyphs + i);
+      if ((i & 63) == 63)
+        dmd.loop();
+    }
     // Remove only the font's globally blank leading rows, preserving its artwork.
     while (rows && !(rows & 1))
     {
@@ -879,12 +888,18 @@ static void drawTopText(int16_t start, int16_t width, const char *text,
     bool lit = false;
     for (uint8_t row = 0; row < DISPLAY_PROFILE.topLineHeight; ++row)
       lit |= line.pixel(x, row) == Bitmap::White;
+    if ((x & 7) == 7)
+      dmd.loop();
     if (!lit)
       continue;
     firstInk = min(firstInk, x);
     lastInk = x;
   }
-  dmd.fill(start, 0, width, DISPLAY_PROFILE.topLineHeight, Bitmap::Black);
+  for (uint8_t row = 0; row < DISPLAY_PROFILE.topLineHeight; ++row)
+  {
+    dmd.fill(start, row, width, 1, Bitmap::Black);
+    dmd.loop();
+  }
   if (lastInk >= firstInk)
   {
     const int16_t inkWidth = min(int16_t(width - 1),
@@ -894,8 +909,16 @@ static void drawTopText(int16_t start, int16_t width, const char *text,
                                 ? (width > inkWidth ? (width - inkWidth) / 2 : 0)
                                 : (alignRight ? width - 1 - inkWidth : 1);
     // One outer pixel of margin; copying cannot cross this zone's boundaries.
-    line.copy(sourceX, 0, inkWidth, DISPLAY_PROFILE.topLineHeight,
-              &dmd, start + targetX, 0);
+    for (uint8_t row = 0; row < DISPLAY_PROFILE.topLineHeight; ++row)
+    {
+      for (int16_t copied = 0; copied < inkWidth; copied += 8)
+      {
+        const int16_t chunk = min<int16_t>(8, inkWidth - copied);
+        line.copy(sourceX + copied, row, chunk, 1, &dmd,
+                  start + targetX + copied, row);
+        dmd.loop();
+      }
+    }
     if (colonSourceX >= sourceX && colonSourceX < sourceX + inkWidth)
     {
       int16_t colonWidth = line.charWidth(':');
@@ -3017,6 +3040,7 @@ void setup()
   Wire.setClock(100000);
 
   dmd.start();
+  analogWriteFreq(8192);
   displayReady = true;
   // Render into a back buffer and present only completed frames. This avoids
   // visible clear-then-draw tearing while Arabic text is being redrawn.

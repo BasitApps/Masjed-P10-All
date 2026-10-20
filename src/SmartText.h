@@ -42,6 +42,7 @@ public:
 
 private:
   bool updateText(const char *src, int8_t y);
+  bool patchStaticAscii(const char *src, int8_t y);
   void drawTextFast(int x, int y, const char *str);
   void clearArea();
   void drawCentered();

@@ -227,6 +227,8 @@ bool SmartText::updateText(const char *src, int8_t y) {
   }
   drawY = y;
   if (strcmp(srcCache, src) != 0) {
+    if (patchStaticAscii(src, y))
+      return true;
     const bool wasScrolling = !isNew && textW > width;
     const int16_t oldTextW = textW;
     const int16_t oldScrollX = scrollX;
@@ -270,6 +272,49 @@ bool SmartText::updateText(const char *src, int8_t y) {
     return true;
   }
   return false;
+}
+
+bool SmartText::patchStaticAscii(const char *src, int8_t y) {
+  if (isNew || !text[0] || textW > width)
+    return false;
+
+  const size_t oldLength = strlen(text);
+  const size_t newLength = strlen(src);
+  if (!oldLength || oldLength != newLength)
+    return false;
+
+  for (size_t i = 0; i < newLength; ++i) {
+    if (static_cast<unsigned char>(text[i]) >= 0x80 ||
+        static_cast<unsigned char>(src[i]) >= 0x80 ||
+        disp.charWidth(text[i]) != disp.charWidth(src[i]) ||
+        needsTextGap(static_cast<unsigned char>(text[i]),
+                     static_cast<unsigned char>(text[i + 1])) !=
+            needsTextGap(static_cast<unsigned char>(src[i]),
+                         static_cast<unsigned char>(src[i + 1])))
+      return false;
+  }
+
+  const int16_t startX = (width - textW) >> 1;
+  int16_t x = startX;
+  for (size_t i = 0; i < newLength; ++i) {
+    const int charWidth = disp.charWidth(text[i]);
+    if (text[i] != src[i]) {
+      disp.drawFilledRect(x, y, x + charWidth - 1,
+                          y + disp.textHeight() - 1, Bitmap::Black);
+      disp.drawChar(x, y, src[i]);
+    }
+    x += charWidth;
+    if (needsTextGap(static_cast<unsigned char>(src[i]),
+                     static_cast<unsigned char>(src[i + 1])))
+      ++x;
+  }
+  strncpy(text, src, BUF_TEXT - 1);
+  text[BUF_TEXT - 1] = '\0';
+  strncpy(srcCache, src, BUF_TEXT - 1);
+  srcCache[BUF_TEXT - 1] = '\0';
+  preserveScrollOnUpdate = true;
+  dirty = true;
+  return true;
 }
 
 bool SmartText::draw(const char *src, int8_t y, unsigned long now) {

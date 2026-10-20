@@ -1108,6 +1108,116 @@ remaining shimmer, intact text and successful phone changes on this candidate.
 
 Owner reports further strong reduction, intact letters and working phone
 settings; residual slight twitch is concentrated at scrolling/static text entry.
+
+### 2026-10-19 — Isolated OE/PWM maintenance comparison; no production change
+
+Owner suspects OE and connected P104 on COM5. Current P104-13/4x1 and valid
+RTC/time were confirmed over HTTP before a complete4MiB backup and independent
+flash digest check. Experiment only modifies a task-local copy of DMDESP and the
+application, preserving original production library files and packaged images.
+
+In one binary, A1/A2 retain analogWrite after every phase; B caches the applied
+duty and leaves PWM running, reapplying on duty change or pause/start invalidation.
+The original pinMode INPUT/OUTPUT blanking, SPI bytes, LAT and row order,16,384Hz
+PWM,1ms scan gate and renderer remain. This isolates PWM setup maintenance; it
+does not test removal of PWM or force OE high during handoff. On the pinned
+Core3.1.2, pinMode does not cancel PWM, whereas digitalWrite does. Preserve this
+distinction when evaluating any eventual fix or SDK upgrade.
+
+The first timed attempt is superseded: owner was not watching. Repetition
+advances only by host command after a human response. Real-scanner check fails
+on original code (12 setups versus1), then passes on the copy with byte-for-byte
+SPI/GPIO traces, brightness changes, clamp/endpoints and pause/resume. Scene
+checks cover manual gating, midnight/cache restoration, millis rollover and
+invalid-time abort; runner checks recovery on success/upload/capture failure.
+Temporary build passes (RAM39440B,Flash431935B,BIN436080B); USB115200 upload hash
+verified. BIN SHA256 d727e4e40c5604a525ec401227cf942f98157fbdf9365c6c8773d4791dfe4a7e.
+
+Owner describes B as reduced except a large twitch at second5, but also submits
+an approximately-unchanged B selection. Preserve both. After explicit return to
+A2, owner reports a clear increase. This supports contribution from repeated PWM
+setup, not a proven sole cause or final repair. B setup delta0 confirms the
+intended variable changed. Stable software windows (unequal durations) have
+peers0 and no measured API/send/store work. No scene reset was detected.
+
+The second5 twitch occurs with the clock still visible, so five-second label
+alternation is not established as its cause. Diagnostic SCAN printing every10s
+and HEAP every60s can still interrupt foreground scanning; SCAN's omitted print
+interval must not be mistaken for an electrical timing bound. Next observation
+should be quiet, with counters in RAM and no periodic printing, before another
+OE/LAT timing guess. Electrical OE/power timing and long-run stability are pending.
+
+Exact original executable restored; executable and original filesystem/EEPROM
+digests independently match. Saved Windows profile reconnected; original P104-13,
+valid RTC/time and4x1 API confirmed. COM5 closed. No production code, settings,
+Android assets or release versions changed. Detailed report and raw evidence:
+`C:/Users/m_nag/.codex/visualizations/2026/10/17/01a14900-8f6f-7a02-ac4f-427e59861ad9/oe-pwm-manual-2026-10-19/report.md`.
+
+### 2026-10-19 — Quiet A/B/A supersedes tentative PWM-caching recommendation
+
+Owner approved continued investigation. A new isolated copy runs the SAME
+per-phase analogWrite A versus cached-duty B, but disables periodic SCAN/HEAP
+printing for both. It keeps counters in RAM and prints only after the human
+observation at stage boundaries. Host telemetry check demonstrates14 old UART
+writes/120 simulated seconds versus0 in the quiet version, with stage sampling
+retained. Existing real-scanner/scene/recovery checks pass; quiet4x1 build passes
+(RAM39376B,Flash431831B,BIN435984B) and USB115200 upload/hash verifies.
+
+Owner reports shimmer in quiet A1 with no large second5 twitch, increased shimmer
+in B, then recovery to the original level in A2. Therefore REJECT PWM reuse as a
+production fix. The earlier logged trial and tentative recommendation do not
+override this quiet reversal. Absence of the second5 twitch supports an observer
+effect from diagnostic output, not a proven digit defect or timed electrical cause.
+
+B setup counter remains165702 (delta0). Summary peer counts0; API/send/store
+maxima0. Mean latch gaps are1000us throughout; maxima2808/2732/4492us over unequal
+observation durations. A lower refresh software cost did not improve the picture.
+Boundary UART work can contaminate render-stage maxima; software print exclusions
+are not optical/electrical bounds. Do not infer uniform phase light or a sole
+scheduling cause from the aggregate scan statistics.
+
+Original executable restored with write hash verification; original executable
+and filesystem/EEPROM digest checks pass. COM5 closed after normal reset. Only
+documentation changes in the production repository. No driver fix, Android asset
+replacement or release publication. Owner has only the computer and clock, no
+scope/logic analyzer. Any further software probe must isolate its own variable;
+do not revive the rejected SDK timer or guess another LAT/row timing change.
+Evidence: sibling `oe-pwm-quiet-2026-10-19/report.md` beside the prior report.
+
+### 2026-10-20 — Quiet frequency comparison supports8192Hz candidate
+
+Owner approved16384/8192/16384Hz trial. Initial attempt did not reach B and failed
+to reconnect for recovery. After owner USB reconnection, read-only identity
+confirmed the same MAC24:4c:ab:4f:ed:96/ChipID0x004fed96. Original executable and
+storage were then independently restored/verified and original API/RTC checked.
+
+Resumption is a separate copied-source trial with a tested15-minute board-side
+exit to normal display/default frequency if host sleeps. Stage transitions stay
+human-gated. Production per-phase PWM maintenance, requested brightness9,
+SPI/LAT/row/OE modes,1ms scan gate, rendering and presentation are retained;
+only requested PWM frequency changes. Periodic UART remains disabled. Tests,
+quiet4x1 build and USB115200 upload/hash pass. BIN436016B SHA256:
+74303506ef810a1658c18430598525f4ab8e0886798a8f0fe03c717bb3bd64e1.
+
+Owner reports usual shimmer at16384Hz, clear reduction at8192Hz, and return to
+the original level at16384Hz. Perceived brightness is approximately unchanged.
+B retains65709 PWM calls for65709 scans. All mean gaps1000us; maxima2596/2540/
+2765us over unequal durations. Peers0, no instrumented API/send/store work, no
+scene reset. Aggregate software timing does not identify electrical pulse shape,
+phase interaction or interrupt load as the sole cause. Lower shimmer is observed,
+not complete elimination or qualification at other duty/font/model/network states.
+
+Recommended bounded next candidate is analogWriteFreq(8192) in application setup
+immediately AFTER dmd.start(), which overrides the library's startup default via
+the public Arduino API and avoids modifying DMDESP core. Retain per-phase
+analogWrite. Candidate source change/ordinary-mode test and publication have NOT
+been performed in this trial.
+
+After comparison, exact original executable restored and executable/storage
+digests independently match. COM5 closed; saved Windows profile reconnected and
+original P104-13/4x1/config7 with valid RTC/time confirmed. No settings/RTC write,
+Android assets, release-version change or publication. Detailed report/raw data:
+sibling `oe-frequency-resume-2026-10-20/report.md` under the prior artifact root.
 Cache is visually accepted. Trace first-frame work separately: shape/measure/
 regional clearing still occurs, and initial scrolling repeats clearArea and
 visits offscreen glyphs. This supports an initial-render-work hypothesis, not
@@ -1219,3 +1329,150 @@ the first64 pixels, so its full time fits; info owns the remainder. On1x1,
 the existing HH:MM format is unchanged because full seconds cannot fit32px.
 On3x1 only, compact info may omit the Gregorian year or Arabic weekday's
 definite article to fit its32px zone. No new configuration or font edits.
+
+## 2026-10-20 — Full-brightness probe does not resolve P104 shimmer
+
+Quiet owner-paced saved9/full255/saved9 at fixed16384Hz retained per-phase PWM
+and scan/render behavior in isolated copies. Full255 uses the pinned core's
+GPIOHIGH endpoint; electrical OE/panel polarity was not instrumented. Owner
+confirms independent5V supply and visibly brighter B, describes B shimmer as
+approximately unchanged, then clear reduction returning to saved brightness.
+Full brightness is not a fix; do not claim electrical OE/power qualification.
+Scan blanking/frame updates persist without a generated PWM pulse train.
+
+Full stage ended manually at58.65s before60s exit. Original executable/storage
+restored and independently verified; normal API/RTC afterward. No production
+source/library/settings/version/Android change. Evidence and limits: external
+oe-full-brightness-2026-10-20/report.md under the artifact root in ROADMAP.
+Continue the authorized ordinary8192Hz trial separately; earlier frequency
+reversal supports a candidate, not a complete fix.
+
+## 2026-10-20 — Ordinary P104 observation supports8192Hz
+
+The isolated release-mode candidate adds only analogWriteFreq(8192) immediately
+after dmd.start(), retaining production per-phase PWM and ordinary rendering.
+Build, same-board identity, write hash, independent candidate/storage digests
+and API/RTC checks passed. Owner reports shimmer "اختفت تقريبًا" in ordinary
+operation. Retain this candidate on the test P104 for longer observation; no
+further write is needed. Current version remains13, so use the recorded BIN
+hash9100ced1... to distinguish it from the captured original. Production source
+and Android assets remain unchanged. This result supports a frequency-dependent
+contribution, not a measured OE/power diagnosis or market-wide qualification.
+Evidence: external oe-frequency-normal-2026-10-20/report.md under ROADMAP's
+artifact root; other settings/models, connected peers and soak remain pending.
+
+### Small-font result limits the8192Hz improvement
+
+Owner then requested small-font testing. Changed only fS1 to0 using the existing
+setDisplay API, retaining8192Hz/brightness9/family/digits/messages. Readback
+verified only fS changed. Owner reports original-severity shimmer in both rows.
+Thus frequency reduction alone is insufficient for both modes; do not market it
+as a general fix or assign the residual to a single row's renderer.
+
+Restored fS1 through the saved minimal request and verified every original
+getData field matched. Settings sequence may advance, so raw storage identity
+is not asserted after these writes. Computer disconnected; same candidate stays
+on P104 with original large font. No production source/library/Android changes.
+Small-font frozen-image/presentation isolation and electrical evidence remain
+outstanding; changing scan/buffer scheduling without that evidence is premature.
+
+## 2026-10-20 — Quiet small-font frame hold reproduces update contribution
+
+Owner authorized a fixed8192Hz/brightness9 small-font active/held/active trial.
+Temporary RAM overrides and real pre-azan rendering only; unchanged vendor
+libraries/per-phase PWM/scan gate. No periodic UART prints. Owner reports original
+shimmer, near disappearance with held image, then original severity returning
+after updates resume. HOLD-entry/ACTIVE2-entry CRC98fdfd90 matches. Software gap
+maxima5406/1415/5417us and over5ms counts6/0/5 accompany that reversal. Summaries
+have peers0 and API/send/store maxima0; no scene reset detected.
+
+This strongly supports a frame-update contribution and scheduling/load involvement.
+HOLD removes drawing, actual swaps and drawing-internal scan opportunities
+together; it does not isolate CPU work from frame-boundary mixing. Boundary
+prints/unequal durations limit timing maxima, and no light/OE waveform is measured.
+The next discriminating experiment retains back-buffer rendering while suppressing
+presentation; it was not performed by this trial. Do not jump directly to a
+driver/timer rewrite or claim a completed all-mode shimmer fix.
+
+Fresh current4MiB captured from the identified board before upload. After the
+trial captured ordinary8192Hz first1MiB restored/hash verified; executable/storage
+digests independently match. Normal API/RTC/time and all original getData fields
+confirmed, including original large font/brightness9. COM5 closed and computer
+Wi-Fi disconnected. No saved setting/RTC write, production source/library or
+Android/version change. Evidence: external small-frame-hold-2026-10-20/report.md
+under ROADMAP's artifact root, including tests, raw serial and recovery manifest.
+
+## 2026-10-20 — Drawing retained with presentation held narrows shimmer cause
+
+Owner approved the discriminating small-font trial: real renderer in all A/B/A
+stages, only presentDisplayFrame suppressed in B.8192Hz/brightness9/family0/
+Western digits unchanged; RAM font/duty override, no vendor edits or stored writes.
+Instrumentation counts actual swaps by changed draw pointer, then retains the
+old pointer as visible-buffer identity. Native actual scene/app-presentation/
+production-swap checks cover60000 changing back-buffer renders with stable front
+bytes/no swaps, resumption, equal-buffer early exit and recovery edge cases.
+
+Owner reports usual shimmer in A1, unchanged B, unchanged A2. B recorded142836
+render-path invocations (not full redraws),81 dirty marks, zero actual swaps,
+matching visible CRC95352656 and changed drawing CRC. Scan-gap maxima5443/5665/
+5956us, over5ms counts14/6/4; summaries peers0/API-send-store0, no detected reset.
+The earlier no-render hold nearly removed shimmer with1415us maximum. Together
+these strongly support drawing-work/cooperative-scan scheduling involvement;
+removing presentation alone did not help. Do not label tearing the proven primary
+cause. A particular drawing function's duration and the final remedy remain
+unverified. Boundary UART/unequal stage lengths limit maxima; no light/OE measure.
+
+Next bounded candidate is scan service during application drawing, particularly
+small-font top-row pixel loops that currently lack service checkpoints. Avoid
+removing SmartText's existing service calls or jumping to a timer/library rewrite.
+This trial itself implements no production drawing fix. Captured ordinary8192
+executable restored/hash verified, independent executable/storage digests match;
+API/RTC/time and every pretrial getData field confirmed. COM5 closed, computer
+Wi-Fi disconnected, large font restored. Production source/library/settings/
+RTC/Android/version untouched. Evidence: external small-present-hold-2026-10-20/
+report.md under ROADMAP's artifact root, with raw logs, tests and backup manifest.
+
+## 2026-10-20 — Service the cooperative scanner during application drawing
+
+Keep foreground scan and existing per-phase PWM. Add dmd.loop between characters,
+64-byte chunks of cold font inspection,8-column ink-inspection chunks and single
+top-row clear/copy rows. Bitmap.copy remains between distinct buffers with correct
+source/destination row offsets. Preserve every font/position/margin/colon pixel;
+no added yield, ISR, buffer-swap policy, allocation or vendor edit. Set8192Hz
+after dmd.start using the public application call, retaining the validated
+large-font improvement. Shared drawDisplayText callers, including OTA/splash,
+were inspected; the driver's paused guard remains applicable.
+
+RED original native check fails552/576 cases per profile without bounded scan
+opportunities (largest counted access run8876). GREEN actual Bitmap/all8 fonts/
+all4 widths:2304 pixel-identical cases, largest counted run409. Counted native
+accesses do not establish microsecond deadlines. Quiet owner-paced service-off/
+on/off P104 trial yields usual shimmer / almost disappeared / usual shimmer.
+Gap maxima5517/1876/5758us, over5ms7/0/11; B checkpoint calls2304, A calls constant.
+All summary peers0/API-send-store0; no scene reset. Unequal durations/boundary
+prints limit maxima; no light/power waveform claim.
+
+After verified baseline recovery, adopted the exact checked ordinary source.
+Four P10 release builds pass. Ordinary P104431024B/SHA25677851678... byte-matches
+production output; same-board write/independent executable and storage digests
+verify. Normal API/RTC/time/settings confirmed. Owner also reports near
+disappearance in ordinary small-font operation. Original fS1 restored and every
+pretrial getData field plus valid RTC/time verified. Font saves may advance
+storage sequence; no raw storage identity claim afterward. COM5 closed,
+computer Wi-Fi disconnected. Fixed ordinary firmware remains on P104.
+No Android assets/version/layout change or other-model physical validation.
+Evidence: external small-draw-service-2026-10-20/report.md under ROADMAP's root.
+
+## 2026-10-20 — P10 v14 release and M-71 deferral
+
+The four P10 variants share the reviewed drawing/scanner changes and now
+advertise version 14: P101-14, P102-14, P103-14 and P104-14. The EEPROM schema
+stays at version 7, so this version bump does not reset configuration. Release
+builds passed for all four profiles; the corresponding BINs were copied to the
+Android assets directory and verified against the build outputs by size and
+SHA-256. The owner rebuilt the Android APK and confirmed the P10 long-run and
+OTA tests successful.
+
+M-71 is intentionally deferred. Its legacy version-8 firmware and asynchronous
+OTA response path require a separate compatibility task; no P10 or M73 image is
+valid for M-71. Seven-segment publication remains a separate release line.
